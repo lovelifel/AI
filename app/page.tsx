@@ -1,69 +1,201 @@
-import Image from "next/image";
+"use client";
+import { useState, useRef } from "react";
+
+interface Message {
+  role: "user" | "assistant";
+  content: string;
+  id: string;
+  thinking?: string;
+  isThinkingDone?: boolean;
+}
 
 export default function Home() {
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+  const [loading, setLoading] = useState(false);
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+  };
+
+  const handleSend = async () => {
+    if (!input.trim() || loading) return;
+    const userText = input.trim();
+    setInput("");
+    setLoading(true);
+    const userMsg: Message = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: userText,
+    };
+    const assistantMsgId = crypto.randomUUID();
+    const assistantMsg: Message = {
+      id: assistantMsgId,
+      role: "assistant",
+      content: "",
+      thinking: "",
+      isThinkingDone: false,
+    };
+    const nextMessages = [...messages, userMsg];
+    setMessages([...nextMessages, assistantMsg]);
+    const payloadMessages = nextMessages.map(({ role, content }) => ({
+      role,
+      content,
+    }));
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: payloadMessages }),
+        signal: abortController.signal,
+      });
+      if (!response.body) {
+        throw new Error("服务端未返回有效的数据流");
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let fullText = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        fullText += chunk;
+
+        let thinking = "";
+        let content = fullText;
+        let isThinkingDone = false;
+        if (fullText.includes("<think>")) {
+          if (fullText.includes("</think>")) {
+            const parts = fullText.split("</think>");
+            thinking = parts[0].replace("<think>", "").trim();
+            content = parts.slice(1).join("</think>").trimStart();
+            isThinkingDone = true;
+          } else {
+            thinking = fullText.replace("<think>", "").trimStart();
+            content = "";
+            isThinkingDone = false;
+          }
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMsgId
+                ? { ...msg, thinking, content, isThinkingDone }
+                : msg,
+            ),
+          );
+        }
+      }
+    } catch (error) {
+      console.log(error);
+    } finally {
+      // 无论成功、失败还是被中断，一定会执行这里
+      setLoading(false);
+      abortControllerRef.current = null; // 清理引用
+    }
+  };
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="flex flex-col h-screen max-w-4xl mx-auto p-4">
+      <header className="py-3 border-b flex justify-between items-center">
+        <h1 className="font-semibold text-lg text-gray-800">多轮对话工作台</h1>
+        <button
+          onClick={() => setMessages([])}
+          className="text-xs text-gray-500 hover:text-red-500 border px-2 py-1 rounded"
+        >
+          清空对话
+        </button>
+      </header>
+
+      {/* 消息滚动区域 */}
+      <main className="flex-1 overflow-y-auto py-4 space-y-4">
+        {messages.length === 0 && (
+          <div className="text-center text-gray-400 text-sm mt-20">
+            暂无消息，输入一句话开始多轮对话吧
+          </div>
+        )}
+
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`flex flex-col ${
+              msg.role === "user" ? "items-end" : "items-start"
+            }`}
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+            {msg.role === "user" ? (
+              <div className="bg-blue-600 text-white px-4 py-2.5 rounded-2xl max-w-[80%] text-sm whitespace-pre-wrap shadow-sm">
+                {msg.content}
+              </div>
+            ) : (
+              <div className="max-w-[85%] space-y-2">
+                {/* 思考过程卡片（每条助手消息独立维护折叠） */}
+                {msg.thinking && (
+                  <details
+                    open={!msg.isThinkingDone}
+                    className="border border-indigo-100 bg-indigo-50/40 rounded-xl overflow-hidden text-xs"
+                  >
+                    <summary className="px-3 py-2 cursor-pointer font-medium text-indigo-700 flex items-center gap-2 select-none">
+                      <span>💭 思考过程</span>
+                      {!msg.isThinkingDone && (
+                        <span className="text-indigo-400 font-normal animate-pulse">
+                          思考中...
+                        </span>
+                      )}
+                    </summary>
+                    <div className="px-3 py-2.5 border-t border-indigo-100/60 bg-white/70 text-gray-600 font-mono whitespace-pre-wrap">
+                      {msg.thinking}
+                    </div>
+                  </details>
+                )}
+
+                {/* 正文回答 */}
+                {msg.content && (
+                  <div className="border border-gray-100 bg-white shadow-sm rounded-2xl px-4 py-3 text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                    {msg.content}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+        <div ref={chatBottomRef} />
       </main>
+
+      {/* 底部输入框 */}
+      <footer className="pt-2 border-t flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+          disabled={loading}
+          placeholder="问点什么..."
+          className="flex-1 border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        {loading ? (
+          <button
+            onClick={handleStop}
+            className="bg-rose-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-rose-700 transition-colors"
+          >
+            停止
+          </button>
+        ) : (
+          <button
+            onClick={handleSend}
+            disabled={!input.trim()}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
+            发送
+          </button>
+        )}
+      </footer>
     </div>
   );
 }
