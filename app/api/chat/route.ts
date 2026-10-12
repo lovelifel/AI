@@ -16,14 +16,9 @@ export async function POST(req: Request) {
             headers: { "Content-Type": "application/json" },
         });
     }
-    const recentMessages = content.slice(-10);
-    const systemPrompt = {
-        role: "system",
-        content: "你是一个高效、精准的 AI 助手。请直接清晰地回答用户的问题。",
-    };
     const response = await client.chat.completions.create({
         model: process.env.AI_MODEL || "Pro/deepseek-ai/DeepSeek-R1",
-        messages: [systemPrompt, ...recentMessages],
+        messages: content,
         stream: true
     });
 

@@ -1,74 +1,221 @@
 "use client";
-import { useState, useRef } from "react";
 
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  id: string;
-  thinking?: string;
-  isThinkingDone?: boolean;
-}
+import React, { useState, useRef, useEffect } from "react";
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { ChatInput } from "@/components/ChatInput";
+import { Sidebar } from "@/components/Sidebar";
+import { buildProductionContext } from "@/lib/context";
+import {
+  ChatSession,
+  StoredMessage,
+  getAllSessions,
+  saveSession,
+  deleteSession as dbDeleteSession,
+  getMessagesBySessionId,
+  saveMessages,
+} from "@/lib/db";
 
-export default function Home() {
+export default function ChatPage() {
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const chatBottomRef = useRef<HTMLDivElement>(null);
+  const [messages, setMessages] = useState<StoredMessage[]>([]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const handleStop = () => {
+
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const autoScrollRef = useRef<boolean>(true);
+
+  // 2. 新建会话
+  const handleNewSession = async () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
+      setLoading(false);
+    }
+
+    const newId = `session_${Date.now()}`;
+    const newSession: ChatSession = {
+      id: newId,
+      title: "新对话",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    await saveSession(newSession);
+    setSessions((prev) => [newSession, ...prev]);
+    setCurrentSessionId(newId);
+    setMessages([]);
+    autoScrollRef.current = true;
+  };
+  // 1. 初始化会话与历史消息
+  useEffect(() => {
+    const initData = async () => {
+      const storedSessions = await getAllSessions();
+      setSessions(storedSessions);
+
+      if (storedSessions.length > 0) {
+        const firstSession = storedSessions[0];
+        setCurrentSessionId(firstSession.id);
+        const msgs = await getMessagesBySessionId(firstSession.id);
+        setMessages(msgs);
+      } else {
+        await handleNewSession();
+      }
+    };
+    initData();
+  }, []);
+  // 3. 切换会话
+  const handleSelectSession = async (sessionId: string) => {
+    if (sessionId === currentSessionId) return;
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setLoading(false);
+    }
+
+    setCurrentSessionId(sessionId);
+    const msgs = await getMessagesBySessionId(sessionId);
+    setMessages(msgs);
+    autoScrollRef.current = true;
+  };
+
+  // 4. 删除会话
+  const handleDeleteSession = async (sessionId: string) => {
+    await dbDeleteSession(sessionId);
+    const remaining = sessions.filter((s) => s.id !== sessionId);
+    setSessions(remaining);
+
+    if (currentSessionId === sessionId) {
+      if (remaining.length > 0) {
+        handleSelectSession(remaining[0].id);
+      } else {
+        handleNewSession();
+      }
     }
   };
 
+  // 5. 停止生成
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setLoading(false);
+    }
+  };
+
+  // 6. 滚动与滚轮物理意图拦截
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    const { scrollHeight, scrollTop, clientHeight } = container;
+    const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+    if (distanceFromBottom <= 15) {
+      autoScrollRef.current = true;
+    }
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (e.deltaY < 0) {
+      autoScrollRef.current = false;
+    }
+  };
+
+  // 流式打字自动吸底
+  useEffect(() => {
+    if (autoScrollRef.current && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: "auto",
+      });
+    }
+  }, [messages]);
+
+  // 7. 发送消息
   const handleSend = async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || !currentSessionId) return;
+
     const userText = input.trim();
     setInput("");
     setLoading(true);
-    const userMsg: Message = {
-      id: crypto.randomUUID(),
+    autoScrollRef.current = true;
+
+    const userMsg: StoredMessage = {
+      id: `msg_${Date.now()}`,
+      sessionId: currentSessionId,
       role: "user",
       content: userText,
+      createdAt: Date.now(),
     };
-    const assistantMsgId = crypto.randomUUID();
-    const assistantMsg: Message = {
+
+    const assistantMsgId = `msg_${Date.now() + 1}`;
+    const assistantMsg: StoredMessage = {
       id: assistantMsgId,
+      sessionId: currentSessionId,
       role: "assistant",
       content: "",
       thinking: "",
       isThinkingDone: false,
+      createdAt: Date.now() + 1,
     };
-    const nextMessages = [...messages, userMsg];
-    setMessages([...nextMessages, assistantMsg]);
-    const payloadMessages = nextMessages.map(({ role, content }) => ({
-      role,
-      content,
-    }));
+
+    const nextMessages = [...messages, userMsg, assistantMsg];
+    setMessages(nextMessages);
+
+    // 自动提炼会话首句标题
+    const activeSession = sessions.find((s) => s.id === currentSessionId);
+    if (activeSession && activeSession.title === "新对话") {
+      const autoTitle =
+        userText.slice(0, 15) + (userText.length > 15 ? "..." : "");
+      const updatedSession = {
+        ...activeSession,
+        title: autoTitle,
+        updatedAt: Date.now(),
+      };
+      await saveSession(updatedSession);
+      setSessions((prev) =>
+        prev.map((s) => (s.id === currentSessionId ? updatedSession : s)),
+      );
+    }
+
+    await saveMessages([userMsg, assistantMsg]);
+
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
+
+    let finalThinking = "";
+    let finalContent = "";
+    let finalThinkingDone = false;
+
+    const context = buildProductionContext(nextMessages);
+
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: payloadMessages }),
+        body: JSON.stringify({
+          content: context,
+        }),
         signal: abortController.signal,
       });
-      if (!response.body) {
+
+      if (!response.ok || !response.body) {
         throw new Error("服务端未返回有效的数据流");
       }
+
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
       let fullText = "";
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+
         const chunk = decoder.decode(value, { stream: true });
         fullText += chunk;
 
         let thinking = "";
         let content = fullText;
         let isThinkingDone = false;
+
+        // 统一处理带 <think> 与不带 <think> 的不同模型输出
         if (fullText.includes("<think>")) {
           if (fullText.includes("</think>")) {
             const parts = fullText.split("</think>");
@@ -80,122 +227,141 @@ export default function Home() {
             content = "";
             isThinkingDone = false;
           }
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMsgId
-                ? { ...msg, thinking, content, isThinkingDone }
-                : msg,
-            ),
-          );
+        } else {
+          isThinkingDone = true;
+          content = fullText;
         }
+
+        finalThinking = thinking;
+        finalContent = content;
+        finalThinkingDone = isThinkingDone;
+
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId
+              ? { ...msg, thinking, content, isThinkingDone }
+              : msg,
+          ),
+        );
       }
-    } catch (error) {
-      console.log(error);
+
+      // 流结束，将完整的助手回答落盘至 IndexedDB
+      await saveMessages([
+        {
+          ...assistantMsg,
+          content: finalContent,
+          thinking: finalThinking,
+          isThinkingDone: finalThinkingDone,
+        },
+      ]);
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === "AbortError") {
+        // 用户主动停止生成，保存当前已生成的切片
+        await saveMessages([
+          {
+            ...assistantMsg,
+            content: finalContent,
+            thinking: finalThinking,
+            isThinkingDone: finalThinkingDone,
+          },
+        ]);
+      } else {
+        console.error("请求失败:", error);
+      }
     } finally {
-      // 无论成功、失败还是被中断，一定会执行这里
       setLoading(false);
-      abortControllerRef.current = null; // 清理引用
+      abortControllerRef.current = null;
     }
   };
+
   return (
-    <div className="flex flex-col h-screen max-w-4xl mx-auto p-4">
-      <header className="py-3 border-b flex justify-between items-center">
-        <h1 className="font-semibold text-lg text-gray-800">多轮对话工作台</h1>
-        <button
-          onClick={() => setMessages([])}
-          className="text-xs text-gray-500 hover:text-red-500 border px-2 py-1 rounded"
-        >
-          清空对话
-        </button>
-      </header>
+    <div className="flex h-screen w-screen overflow-hidden bg-zinc-50">
+      {/* 左侧会话侧边栏 */}
+      <Sidebar
+        sessions={sessions}
+        currentSessionId={currentSessionId}
+        onSelectSession={handleSelectSession}
+        onNewSession={handleNewSession}
+        onDeleteSession={handleDeleteSession}
+      />
 
-      {/* 消息滚动区域 */}
-      <main className="flex-1 overflow-y-auto py-4 space-y-4">
-        {messages.length === 0 && (
-          <div className="text-center text-gray-400 text-sm mt-20">
-            暂无消息，输入一句话开始多轮对话吧
-          </div>
-        )}
+      {/* 右侧主聊天区 */}
+      <div className="flex-1 flex flex-col h-full min-w-0">
+        <header className="h-14 border-b border-zinc-200 bg-white px-6 flex items-center justify-between shrink-0">
+          <h1 className="font-semibold text-sm text-zinc-800 truncate">
+            {sessions.find((s) => s.id === currentSessionId)?.title || "新对话"}
+          </h1>
+        </header>
 
-        {messages.map((msg) => (
+        <main className="flex-1 min-h-0 relative flex flex-col">
+          {messages.length === 0 && (
+            <div className="text-center text-zinc-400 text-sm mt-28">
+              暂无消息，输入一句话开始多轮对话吧
+            </div>
+          )}
+
           <div
-            key={msg.id}
-            className={`flex flex-col ${
-              msg.role === "user" ? "items-end" : "items-start"
-            }`}
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            onWheel={handleWheel}
+            className="flex-1 min-h-0 overflow-y-auto px-4 py-6 space-y-5"
           >
-            {msg.role === "user" ? (
-              <div className="bg-blue-600 text-white px-4 py-2.5 rounded-2xl max-w-[80%] text-sm whitespace-pre-wrap shadow-sm">
-                {msg.content}
-              </div>
-            ) : (
-              <div className="max-w-[85%] space-y-2">
-                {/* 思考过程卡片（每条助手消息独立维护折叠） */}
-                {msg.thinking && (
-                  <details
-                    open={!msg.isThinkingDone}
-                    className="border border-indigo-100 bg-indigo-50/40 rounded-xl overflow-hidden text-xs"
-                  >
-                    <summary className="px-3 py-2 cursor-pointer font-medium text-indigo-700 flex items-center gap-2 select-none">
-                      <span>💭 思考过程</span>
-                      {!msg.isThinkingDone && (
-                        <span className="text-indigo-400 font-normal animate-pulse">
-                          思考中...
-                        </span>
-                      )}
-                    </summary>
-                    <div className="px-3 py-2.5 border-t border-indigo-100/60 bg-white/70 text-gray-600 font-mono whitespace-pre-wrap">
-                      {msg.thinking}
-                    </div>
-                  </details>
-                )}
-
-                {/* 正文回答 */}
-                {msg.content && (
-                  <div className="border border-gray-100 bg-white shadow-sm rounded-2xl px-4 py-3 text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex flex-col ${
+                  msg.role === "user" ? "items-end" : "items-start"
+                }`}
+              >
+                {msg.role === "user" ? (
+                  <div className="bg-blue-600 text-white px-4 py-2.5 rounded-2xl max-w-[80%] text-sm whitespace-pre-wrap shadow-sm">
                     {msg.content}
+                  </div>
+                ) : (
+                  <div className="max-w-[85%] space-y-2">
+                    {msg.thinking && (
+                      <details
+                        open={!msg.isThinkingDone}
+                        className="border border-indigo-100 bg-indigo-50/40 rounded-xl overflow-hidden text-xs"
+                      >
+                        <summary className="px-3 py-2 cursor-pointer font-medium text-indigo-700 flex items-center gap-2 select-none">
+                          <span>💭 思考过程</span>
+                          {!msg.isThinkingDone && (
+                            <span className="text-indigo-400 font-normal animate-pulse">
+                              思考中...
+                            </span>
+                          )}
+                        </summary>
+                        <div className="px-3 py-2.5 border-t border-indigo-100/60 bg-white/70 text-zinc-600 font-mono whitespace-pre-wrap">
+                          {msg.thinking}
+                        </div>
+                      </details>
+                    )}
+
+                    {msg.content && (
+                      <div className="border border-zinc-100 bg-white shadow-sm rounded-2xl px-4 py-3 text-sm text-zinc-800 leading-relaxed">
+                        <MarkdownRenderer markdown={msg.content} />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
+            ))}
           </div>
-        ))}
-        <div ref={chatBottomRef} />
-      </main>
+        </main>
 
-      {/* 底部输入框 */}
-      <footer className="pt-2 border-t flex gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
-          disabled={loading}
-          placeholder="问点什么..."
-          className="flex-1 border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        {loading ? (
-          <button
-            onClick={handleStop}
-            className="bg-rose-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-rose-700 transition-colors"
-          >
-            停止
-          </button>
-        ) : (
-          <button
-            onClick={handleSend}
-            disabled={!input.trim()}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
-            发送
-          </button>
-        )}
-      </footer>
+        <footer className="p-4 border-t border-zinc-200 bg-white shrink-0">
+          <div className="max-w-4xl mx-auto">
+            <ChatInput
+              value={input}
+              onChange={setInput}
+              onSend={handleSend}
+              onStop={handleStop}
+              loading={loading}
+            />
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }
