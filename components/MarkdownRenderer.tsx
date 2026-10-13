@@ -8,7 +8,8 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { dark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useCopy } from "@/hooks/useCopy";
 interface MarkdownRendererProps {
-  markdown: string;
+  markdown?: string;
+  content?: string;
 }
 function CodeBlock({ language, value }: { language: string; value: string }) {
   const { copied, copyToClipboard } = useCopy();
@@ -51,7 +52,9 @@ function CodeBlock({ language, value }: { language: string; value: string }) {
 
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   markdown,
+  content,
 }) => {
+  const rawText = markdown ?? content ?? "";
   return (
     <Markdown
       remarkPlugins={[remarkGfm]}
@@ -128,7 +131,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         },
       }}
     >
-      {markdown}
+      {rawText}
     </Markdown>
   );
 };
+
+export default MarkdownRenderer;

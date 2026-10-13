@@ -130,3 +130,25 @@ export async function clearAllChatData(): Promise<void> {
     await tx.objectStore("messages").clear();
     await tx.done;
 }
+// lib/db.ts 尾部追加
+
+/**
+ * 物理删除一组指定 ID 的消息（用于 Regenerate 截断分支场景）
+ */
+export async function deleteMessagesByIds(messageIds: string[]): Promise<void> {
+    if (messageIds.length === 0) return;
+    const db = await getDB();
+    const tx = db.transaction('messages', 'readwrite');
+    for (const id of messageIds) {
+        await tx.store.delete(id);
+    }
+    await tx.done;
+}
+
+/**
+ * 删除单条消息
+ */
+export async function deleteMessage(messageId: string): Promise<void> {
+    const db = await getDB();
+    await db.delete('messages', messageId);
+}
