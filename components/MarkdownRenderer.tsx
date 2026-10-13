@@ -1,28 +1,17 @@
 // components/MarkdownRenderer.tsx
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { dark } from "react-syntax-highlighter/dist/esm/styles/prism";
-
+import { useCopy } from "@/hooks/useCopy";
 interface MarkdownRendererProps {
   markdown: string;
 }
 function CodeBlock({ language, value }: { language: string; value: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error("复制失败:", err);
-    }
-  };
-
+  const { copied, copyToClipboard } = useCopy();
   return (
     <div className="relative my-3 rounded-xl overflow-hidden border border-zinc-800 shadow-md bg-[#1e1e1e]">
       {/* 顶部语言标签与复制栏 */}
@@ -31,7 +20,7 @@ function CodeBlock({ language, value }: { language: string; value: string }) {
           {language || "text"}
         </span>
         <button
-          onClick={handleCopy}
+          onClick={() => copyToClipboard(value)}
           className="flex items-center gap-1 hover:text-white transition-colors text-xs py-0.5 px-2 rounded hover:bg-zinc-700/60"
         >
           {copied ? (

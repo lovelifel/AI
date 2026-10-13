@@ -106,3 +106,27 @@ export async function saveMessages(messages: StoredMessage[]): Promise<void> {
     }
     await tx.done;
 }
+
+// lib/db.ts 尾部追加
+
+// 更新单个会话的标题
+export async function updateSessionTitle(sessionId: string, newTitle: string): Promise<void> {
+    const db = await getDB();
+    const tx = db.transaction("sessions", "readwrite");
+    const session = await tx.store.get(sessionId);
+    if (session) {
+        session.title = newTitle;
+        session.updatedAt = Date.now();
+        await tx.store.put(session);
+    }
+    await tx.done;
+}
+
+// 清空所有会话与消息
+export async function clearAllChatData(): Promise<void> {
+    const db = await getDB();
+    const tx = db.transaction(["sessions", "messages"], "readwrite");
+    await tx.objectStore("sessions").clear();
+    await tx.objectStore("messages").clear();
+    await tx.done;
+}

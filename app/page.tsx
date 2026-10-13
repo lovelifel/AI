@@ -10,9 +10,11 @@ import {
   StoredMessage,
   getAllSessions,
   saveSession,
-  deleteSession as dbDeleteSession,
+  deleteSession,
   getMessagesBySessionId,
   saveMessages,
+  updateSessionTitle,
+  clearAllChatData,
 } from "@/lib/db";
 
 export default function ChatPage() {
@@ -25,6 +27,39 @@ export default function ChatPage() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef<boolean>(true);
+
+  // app/page.tsx (示例绑定)
+  const handleRenameSession = async (id: string, newTitle: string) => {
+    // 1. 持久化到 IndexedDB
+    await updateSessionTitle(id, newTitle);
+    // 2. 更新内存 state
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === id ? { ...s, title: newTitle, updatedAt: Date.now() } : s,
+      ),
+    );
+  };
+
+  const handleDeleteSession = async (id: string) => {
+    // 1. 级联删除 IndexedDB 数据（包括 session 与关联 messages）
+    await deleteSession(id);
+    // 2. 更新内存 state
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+    // 3. 若删除的是当前激活会话，重置会话或切到第一条
+    if (currentSessionId === id) {
+      setCurrentSessionId(null);
+      setMessages([]);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (confirm("确定要清空全部会话与记录吗？此操作不可逆。")) {
+      await clearAllChatData();
+      setSessions([]);
+      setCurrentSessionId(null);
+      setMessages([]);
+    }
+  };
 
   // 2. 新建会话
   const handleNewSession = async () => {
@@ -79,22 +114,6 @@ export default function ChatPage() {
     autoScrollRef.current = true;
   };
 
-  // 4. 删除会话
-  const handleDeleteSession = async (sessionId: string) => {
-    await dbDeleteSession(sessionId);
-    const remaining = sessions.filter((s) => s.id !== sessionId);
-    setSessions(remaining);
-
-    if (currentSessionId === sessionId) {
-      if (remaining.length > 0) {
-        handleSelectSession(remaining[0].id);
-      } else {
-        handleNewSession();
-      }
-    }
-  };
-
-  // 5. 停止生成
   const handleStop = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -102,7 +121,6 @@ export default function ChatPage() {
     }
   };
 
-  // 6. 滚动与滚轮物理意图拦截
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const container = e.currentTarget;
     const { scrollHeight, scrollTop, clientHeight } = container;
@@ -283,6 +301,8 @@ export default function ChatPage() {
         onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
         onDeleteSession={handleDeleteSession}
+        onRenameSession={handleRenameSession}
+        onClearAll={handleClearAll}
       />
 
       {/* 右侧主聊天区 */}
