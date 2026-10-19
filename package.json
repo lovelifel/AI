@@ -1,5 +1,5 @@
 {
-  "name": "ai-sandbox",
+  "name": "agent-workspace",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,23 +9,17 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "idb": "^8.0.4",
-    "next": "16.4.0",
-    "openai": "^7.32.0",
+    "next": "16.4.2",
     "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "react-markdown": "^10.1.0",
-    "react-syntax-highlighter": "^16.1.2",
-    "remark-gfm": "^4.0.1"
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/react-syntax-highlighter": "^15.5.13",
     "eslint": "^9",
-    "eslint-config-next": "16.4.0",
+    "eslint-config-next": "16.4.2",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
