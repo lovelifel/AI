@@ -23,7 +23,7 @@ export function buildProductionContext(
 ): ApiMessage[] {
     const valid = messages.filter((m) => m.content?.trim());
     if (!valid.length) return systemPrompt ? [{ role: "system", content: systemPrompt }] : [];
-    const head = valid[0].role === "user" ? valid[0] : undefined;
+    const head = valid.length > 1 && valid[0].role === "user" ? valid[0] : undefined;
     const tail = valid[valid.length - 1];
     const middle = valid.slice(head ? 1 : 0, -1);
     let remain = maxTokens - estimateTokens(systemPrompt) - estimateTokens(tail.content) - estimateTokens(head?.content || "");

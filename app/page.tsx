@@ -98,8 +98,6 @@ export default function ChatPage() {
         setCurrentSessionId(firstSession.id);
         const msgs = await getMessagesBySessionId(firstSession.id);
         setMessages(msgs);
-      } else {
-        await handleNewSession();
       }
     };
     initData();
