@@ -1,4 +1,3 @@
-import StudyCounter from "@/components/StudyCounter"; 
 export default function Home() {
   const projectName = "Agent Workspace";
   return (
@@ -12,12 +11,6 @@ export default function Home() {
             这个应用是帮助我，学习AI应用开发得一个项目,目的之掌握传统前端向AI应用开发得完整流程
           </p>
         </div>
-        <ul className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-          <li>AI 对话</li>
-          <li>知识库检索</li>
-          <li>Agent 任务</li>
-        </ul>
-        <StudyCounter />
       </main>
     </div>
   );
