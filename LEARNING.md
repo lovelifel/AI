@@ -623,6 +623,213 @@ Day 3 后续复盘：学习者正确回答 props 改变不会自动覆盖已有�
 - 区分 Zod schema（输入输出校验）和 Drizzle schema（数据库表及约束）。写 TS 表定义不会自动建表，后续 generate 生成 SQL、migrate 执行。
 - 本轮只布置安装与表定义，迁移配置和数据库改动留到 Review 后；暂不改变接口响应或 Zod 模型。
 
+### Day 10 表定义检查与迁移任务
+
+- 已核对依赖安装完成：drizzle-orm 0.45.4、pg 8.23.1、drizzle-kit 0.31.11、dotenv 18.0.9 及 pg 类型。
+- src/lib/db/schema.ts 三字段定义正确，drizzle.config.ts 尚未创建。
+- 下一步学习者创建配置：显式加载 .env.local、检查 DATABASE_URL、指定 postgresql、schema 路径与 drizzle 输出目录。
+- 先执行 drizzle-kit generate --name=init_tasks 并阅读 SQL；generate 不连接数据库建表。Review SQL 后再执行 migrate，避免将生成和执行混为一步。
+- 迁移 SQL 与快照应纳入版本管理，本地 .env.local 保持忽略；本轮没有执行数据库改动。
+
+### Day 10 初始迁移 Review
+
+- 已检查 drizzle.config.ts、0000_init_tasks.sql 及迁移 journal，均与表定义一致；TypeScript 检查通过。
+- SQL 仅创建 tasks 表，uuid 主键默认 gen_random_uuid()、varchar(30) 非空 title、带时区 created_at 默认 now()，无删除或覆盖操作。
+- 下一步学习者执行 npx drizzle-kit migrate，将待执行迁移应用到本地数据库；之后导师检查实际表和迁移记录。
+- 尚未确认迁移执行，不能标记数据库表已存在；应用 API 仍待接入数据库。
+
+### Day 10 迁移执行验证
+
+- 学习者提供配置加载与 pg 驱动日志；导师执行只读数据库查询确认 public.tasks 已存在，三字段类型、非空约束、默认值和主键与迁移一致。
+- drizzle.__drizzle_migrations 中已有 1 条迁移记录，初始迁移已成功应用。单凭配置加载日志不能判断成功，本轮以实际数据库状态为证据。
+- 下一步建立仅服务端使用的数据库连接模块，并将 POST 改为 insert ... returning；尚未接入，不标记任务已持久化。
+
+### Day 10 POST 入库任务
+
+- 已核对当前 route.ts 仍只生成内存对象；任务表与数据库已就绪。
+- 学习者下一步创建仅服务端的 src/lib/db/index.ts：pg Pool + drizzle，读取 DATABASE_URL，开发环境在 globalThis 复用连接池，设置连接超时。
+- POST 校验通过后执行 db.insert(tasks).values({ title }).returning({ id, title })，UUID 和创建时间交给数据库默认值，保留原响应契约。
+- 数据库异常返回 500 与稳定中文错误，避免将底层异常直接返回客户端；不在每次请求里 pool.end()。
+- 本轮仅布置写入，不实现 GET 或改变客户端首次加载；刷新后 UI 暂时为空不代表数据库丢数据。
+- 代码完成后 Review、lint、类型检查，并通过真实表查询验证新增记录。
+
+### Day 10 POST 入库验收 — 2026-10-26
+
+- 已核对 server-only 数据库连接、开发连接池复用、连接超时和 POST 的 insert/returning 实现正确；失败返回稳定 500 JSON。
+- TypeScript 检查通过，lint 检查结果见本轮执行输出。
+- 导师只读查询 public.tasks，确认已保存 1 条任务“学习 React”，具有数据库生成的 UUID 和 created_at，持久化写入目标通过。
+- 未代写测试数据；读取的是学习者提交后已有记录。
+- 下一步 GET 查询及客户端首次加载，将数据库已有任务显示回页面，完成刷新后恢复列表的闭环。
+
+## Day 11 — GET 查询与首次加载（2026-10-27）
+
+状态：检查已有尝试，先修正查询接口，再接客户端。
+
+- 已发现学习者新增 GET 和 getTasks，但 GET 使用 where({ title: { contains: q } })，这是其他 ORM 风格，非当前 Drizzle SQL 查询构造器的条件表达式；TypeScript 本轮虽通过，不能据此确认查询运行正确。
+- 第一轮先去掉 q 筛选，客户端已有本地搜索；使用 select id/title、from(tasks)、orderBy(createdAt,id) 返回稳定顺序，失败返回 500 JSON。
+- UUID 已是字符串，不需 String(id) 映射；getTasks 中 as Task[] 不做实际校验，下一轮改为列表响应 Zod schema。
+- TaskDraft 尚未首次加载数据库列表；继续分步推进，避免混淆“读取接口完成”和“页面刷新恢复”。
+- 本轮只读业务代码、检查类型并布置修正，不代改实现。
+
+### Day 11 GET 失败排查 — 2026-10-27
+
+- 学习者截图显示 GET 返回读取失败；已检查 select/from/orderBy 写法正确。
+- 提权检查 Docker 状态仍提示 dockerDesktopLinuxEngine 命名管道不存在，当前 Docker Linux 引擎不可用，无法运行项目数据库；先恢复 Docker 与 db 容器，再复验接口，暂不归因于查询逻辑。
+- 恢复命令：docker compose --env-file .env.local up -d --wait db。已有命名卷保留，不需重新迁移或删库。
+- GET 中残留 debugger，可清除；服务端 catch 后续补安全诊断日志，客户端继续返回稳定错误，不泄露连接串。
+
+### Day 11 GET 恢复验证
+
+- 导师实际请求 http://localhost:3000/api/tasks，返回 HTTP 200 和数据库已有“学习 React”，确认数据库恢复且 GET 读取链路正常；TypeScript 检查通过。
+- 下一步添加 ListTasksResponseSchema = z.object({ tasks: z.array(TaskSchema) })，将 getTasks 改为 Promise<Task[]>，移除 as Task[]，复用响应校验与错误处理。
+- 查询函数完成 Review 后再接 TaskDraft 首次加载及加载/错误状态，不一次堆入 Effect 与数据校验两个新点。
+
+### Day 11 列表响应校验 Review
+
+- ListTasksResponseSchema 正确使用 z.array(TaskSchema)，getTasks 已移除 as Task[]，校验后返回 parsed.data.tasks，核心实现通过。
+- lint 与 TypeScript 检查通过。Promise<Task[]> 可被自动推断，显式标注属于可读性建议；data: unknown 建议用于明确外部数据边界。
+- 下一步 TaskDraft 使用 useEffect 首次读取，区分 isLoading、loadError 与提交状态；Effect 回调本身不能 async，异步函数放内部，清理时忽略过期响应。
+- 首次加载及重试期间阻止新增，避免较早 GET 的返回覆盖刚新增任务；加载失败不显示“暂无任务”，成功空数组才显示空态。
+- 页面文案更新为数据库持久保存，完成后验收新增并刷新仍可见。本轮未代改业务代码。
+
+### Day 11 首次加载第一轮 Review
+
+- 已在 Effect 内调用 getTasks，成功写入列表，TypeScript 检查通过。
+- lint 未通过：Effect 同步 setIsLoading(true) 触发 react-hooks/set-state-in-effect；初始值已经 true，可删除该行。isLoading 尚未参与界面导致未使用警告。
+- 待补 loadError 状态与可见错误；当前仅 console.error，读取失败会被误显示成暂无任务。
+- 待补 Effect cleanup 忽略过期回调，then/catch/finally 均需保护；避免开发 Strict Mode 或离开页面后的旧响应更新状态。
+- 待补加载/失败时禁止提交，函数入口与 disabled 均检查，避免首次 GET 覆盖新添加记录。
+- 页面“刷新后清空”文案尚未修改。业务代码未代改，运行验收待完成。
+
+### Day 11 首次加载第二轮 Review
+
+- Effect 异步函数、ignore 清理及所有加载回调保护已正确补齐；TypeScript 通过。
+- lint 无错误，仍有 isLoading 未使用警告。加载状态尚未参与渲染，loadError 仅替换数量段落，下面空态仍独立显示，导致错误提示与暂无任务同时出现。
+- 提交函数入口与输入/按钮仍只判断 isSubmitting，首次查询覆盖新增记录的风险尚未修正。
+- 旧“刷新后清空”文案仍存在。本轮继续聚焦这些已有要求，不添加新功能，业务代码未代改。
+
+### Day 11 首次加载收尾 — 导师直接实现
+
+- 学习者明确要求直接生成基础界面与状态修正，后续减少基础 JSX 往返，重点转向数据流、服务端边界和工程问题。
+- TaskDraft 的加载、加载失败、成功列表/空态改为互斥展示；数量仅在加载成功时显示，错误不会与暂无任务混在一起。
+- 统一 isFormDisabled，用于提交函数入口和任务输入/提交按钮，避免初始 GET 返回覆盖加载期间新增记录。
+- 更新数据库持久化文案，保留已有 ignore 清理逻辑与失败保留输入。
+- 导师修改后 lint 与 TypeScript 检查均通过，无警告；本轮未独立验证浏览器刷新和慢网交互，不标记端到端验收完成。
+
+## Day 12 — 动态路由与任务删除（2026-10-27 开始）
+
+状态：删除功能已完成，代码检查、真实 HTTP 与浏览器核心交互验收通过；仍在全栈基础阶段。
+
+- 核对当前 Next.js route 文档，动态 params 是 Promise，使用 await params。
+- [x] 学习者创建 src/app/api/tasks/[id]/route.ts，导出 DELETE，取得并用 Zod 校验 UUID。
+- [x] 非法 id 返回 400；限定删除并 returning id；无记录 404，成功 204，数据库异常有稳定 500 JSON 分支（未停库注入真实故障）。
+- [x] 根据 delete returning 判断结果，不先 select 再 delete。
+- [x] 导师补齐 deleteTask 与按钮，成功后更新列表，失败保留并提示，写操作进行中禁用按钮并用 ref 阻止渲染前重复请求。
+- [x] 使用专用测试任务完成 400、204、重复删除 404、刷新确认移除，不删除已有学习任务。
+- 基础 UI 可由导师直接实现，核心接口由学习者先尝试；尚未执行删除操作。
+
+### Day 12 DELETE 第一轮 Review
+
+- 动态路由文件位置、await params、按 tasks.id 限定删除和 204 无响应体正确；TypeScript 检查通过。
+- 待补：UUID 格式校验返回 400，判断 deleted 不存在返回 404，数据库异常 try/catch 返回 500。
+- 当前 deleted 未使用，不能区分删除成功与目标不存在；非法 UUID 可能直接导致 PostgreSQL 查询异常。
+- 未执行删除测试，避免将未完成的错误处理视为验收通过；下一轮再用专用任务验证完整状态码。
+
+### Day 12 DELETE 第二轮 Review
+
+- UUID 校验与 400、deleted 不存在返回 404 已补齐，使用校验后的 result.data 限定删除；lint / TypeScript 均通过，无警告。
+- 尚未补数据库操作的 try/catch，数据库异常仍可能返回框架默认响应，缺少约定的 500 JSON；本轮未执行删除测试。
+- 剩余修正只涉及数据库错误分支，不扩展功能；补齐后执行专用任务的创建/删除/重复删除验证。
+
+### Day 12 DELETE 异常处理补齐
+
+- 学习者明确授权补充；导师将删除查询与 404/204 分支放入 try，数据库异常返回稳定 500 JSON，UUID 校验仍在查询前。
+- 修改后 lint 与 TypeScript 检查通过；本轮未执行实际删除或模拟数据库故障，运行验收仍待进行。
+
+### Day 12 删除运行验收与数据流复盘 — 2026-10-27
+
+- 修改前说明：请求层处理空正文 204 与失败响应；组件采用服务端确认后删除的方式，未做乐观更新。
+- 实现：deleteTask 返回 Promise<void>；TaskDraft 使用 deletingId 显示当前项进度、deleteError 独立展示错误、mutationInFlight ref 作为同步写锁；finally 解除锁和按钮状态。GET 残留 debugger 已移除。
+- scripts/verify-task-delete.mjs 实际调用本地 HTTP：非法 ID 400、创建专用任务 201、首次删除 204 且空正文、同 ID 再删 404、GET 前后列表一致，全部通过。
+- scripts/verify-delete-client.mjs 执行实际请求函数并模拟 fetch：204 不读 JSON、404 错误信息、非 JSON 502 兜底、网络错误传播均通过。这是请求层测试，不冒充浏览器断网验收。
+- 浏览器实际操作：添加“界面删除验收-1027”，刷新仍存在；点击删除后从列表移除，刷新仍不存在。
+- 浏览器 404 路径：创建专用冲突测试任务，从服务端删除后再点击旧页面删除，显示“任务不存在”、保留旧项并恢复按钮；刷新后与数据库一致。测试任务均已清理。
+- 验收截图：artifacts/task-delete-acceptance.png。lint 与 TypeScript 检查通过。
+- 启动并保留 Next.js 开发服务与项目数据库供继续学习；运行环境曾未启动，恢复后完成验收。
+- 排错重点：HTTP DELETE 的 204 没有 JSON；网络失败不等于服务端一定没执行，发生歧义时重新 GET 对账；404 可反映其他客户端已删除，当前实现提示后由刷新恢复一致。
+- useRef 同步锁与 useState 的区别：ref 可在同一事件时序立即生效但不驱动界面，state 驱动按钮和进度显示，避免把 UI 禁用当成唯一的重复提交防护。
+
+## Day 13 — 任务状态更新：独立实现与讲解验收
+
+状态：已布置，等待学习者独立实现；导师不预写业务代码。任务状态是手动学习任务标记，不代表 Agent 执行状态。
+
+### 目标与边界
+
+- 状态仅有 todo / done，默认 todo；可从任意一个切换到另一个，不实现执行引擎、状态机队列或新依赖。
+- 数据库新增非空 status，使用 PostgreSQL enum 或 CHECK 约束；已有任务迁移后默认 todo。必须生成和查看 SQL，再 migrate，不改写已执行的初始迁移、不清库。
+- Zod 校验状态枚举；Task、创建/列表响应和数据库查询返回 status，确保新增与刷新表现一致。
+- PATCH /api/tasks/[id] 仅接收 { status }，拒绝其他字段；UUID/JSON/状态错误 400，目标不存在 404，更新成功返回 200 { task }，数据库错误稳定 500。
+- 使用带 ID 条件的 update returning，不先查询再更新；重复设置同一状态允许成功。
+- 请求层新增 updateTaskStatus，校验成功响应，组件成功后按 ID 替换返回的 task；失败保持旧状态并显示错误，请求中禁止重复操作。
+- 用两个状态按钮或复用现有控件即可，不考核装饰性 JSX；继续保持数据库连接仅供服务端使用。
+
+### 独立验收清单
+
+- [ ] 提交实施顺序与涉及文件说明，独立完成迁移、PATCH、请求函数和页面交互；遇到问题可描述证据请求提示。
+- [ ] 已有任务默认 todo，新建默认 todo；切换 done 后刷新仍 done，可切回 todo。
+- [ ] 用专用测试记录验证非法 UUID、非法 JSON、非法状态/额外字段 400，不存在 ID 404，合法更新 200。
+- [ ] 慢请求防重复、失败不假显示成功；删除、创建、搜索无回归。
+- [ ] lint / TypeScript 通过；提供实际请求状态码和浏览器运行证据。
+- [ ] 独立讲解：一次状态更新从点击到数据库再到界面的路径；为何 TS 类型不能代替服务端校验；网络超时后如何确认最终状态。
+
+## 每周复习与独立验收节奏（学习者最新要求）
+
+- 基础 JSX 和重复表单接线可由导师直接处理；核心数据流、服务端边界、数据库约束与排错由学习者实践和讲解。明确记录独立实现与导师代写，不能混作独立掌握。
+- 每周两次前端原理复习，各约 20–30 分钟，覆盖 JavaScript 通用原理、React 与 Vue 3，不只围绕当前 React 工程。
+- 第 2 周 2026-10-29：事件循环、Promise 与请求竞态；对照 Vue 3 的 nextTick / 更新调度与 React 状态批处理，解释状态更新后何时能读取更新后的 DOM。
+- 第 2 周 2026-10-31：Vue 3 的 ref/reactive、响应式依赖追踪、computed 与 watch/watchEffect；对照 React 状态快照、派生计算及 useEffect，讨论闭包、异步副作用清理与列表 key 身份。每次选 1–2 个核心问题深入，其余顺延，不压缩为术语背诵。
+- 每周独立讲解至少包含一个 Vue 3 场景，可用小段代码或现有 Vue 项目经验说明，不要求为复习给 Agent Workspace 引入 Vue。后续轮换组件通信、组合式函数、渲染更新、性能与工程排错。
+- 每周一次独立实现加讲解验收，约 60–90 分钟；第 2 周安排 2026-11-01。Day 13 状态更新作为本周独立实现候选，完成后再验收，不提前标记通过。
+- 验收组成：独立实现可运行功能、现场解释关键设计、定位一个失败案例；按独立完成/提示后完成/导师实现记录，不以代码量或日历天数判定掌握。
+- 第 1 周正式独立验收未完成，保留历史事实；第 2 周用当前工程补充证据，不倒填通过。
+
+### Day 13 状态迁移第一轮 Review — 2026-10-27
+
+- 学习者已定义 pgEnum task_status（todo/done）和非空 status 默认 todo，生成独立 0001_add_task_status.sql。
+- SQL 仅 CREATE TYPE 与 ALTER TABLE ADD COLUMN，初始迁移未改写，已有行将获得 todo 默认状态；TypeScript 检查通过。
+- Review 通过，下一步学习者执行 npx drizzle-kit migrate；实际数据库状态尚未验证，不提前标记已应用。
+- 然后独立更新 Zod TaskSchema 与 PATCH 请求 schema（strict 对象只允许 status），POST/GET 返回 status，准备 PATCH 接口。
+
+### Day 13 迁移实际执行排查
+
+- 学习者反馈执行完毕；导师查询实际项目库发现 status 不存在，迁移记录仍为 1 条。不能以生成文件或命令开始日志判断迁移成功。
+- 核对配置和脱敏连接目标为 127.0.0.1:5433/agent_workspace，迁移文件与 journal 正确。
+- 导师执行此前已 Review 且已授权的 npx drizzle-kit migrate，命令明确返回 migrations applied successfully；随后只读复查默认状态及迁移条数。
+- Zod TaskSchema 与 POST/GET 的 status 返回尚未修改，后续继续由学习者实现，未代写独立状态更新代码。
+
+### Day 13 数据契约 Review
+
+- TaskStatusSchema、TaskSchema.status、strict 的 UpdateTaskStatusSchema 已正确实现；POST returning 和 GET select 都已包含 status。
+- 导师实际请求 GET，HTTP 200，两条原任务都返回 status: todo，契约同步目标通过。
+- [id]/route.ts 中 PATCH 仍为注释模板，且复制了 DELETE 查询；下一步独立实现时必须替换为 update/set/where/returning，不能误删任务。
+- 只更新 status，服务端根据更新返回记录决定 404 或 200；非法 JSON、UUID、状态和额外字段返回 400，数据库异常 500。重复设置相同状态返回 200。
+
+### Day 13 PATCH 第一轮 Review 与实际请求验证
+
+- 学习者实现 UUID/JSON/strict 状态校验、按 ID update returning、无记录 404 和异常分支；lint 与 TypeScript 均通过。
+- 实际创建专用任务后 PATCH done，数据库 GET 确认为 done；非法 ID、非法 JSON、非法状态、额外字段均实测 400。
+- 测试任务已删除，GET 前后比较确认已有任务未改动。
+- 尚未符合接口契约：PATCH 成功沿用 DELETE 的 204 空正文，应返回 200 { task }，客户端才能获取服务端实际状态；异常文案仍写“删除任务失败”，应改“更新任务状态失败”。
+- 核心更新和输入边界正确，等待学习者修正这两处后再验证 200 响应、重复同状态与不存在任务 404，之后接请求层。
+
+### Day 13 PATCH 响应修正与复验
+
+- 学习者明确授权补充；导师仅将 PATCH 成功改为 200 { task }，异常文案改为更新任务状态失败，DELETE 的 204 与文案保留。
+- lint 与 TypeScript 检查通过。
+- 实际创建专用任务确认默认 todo，依次 PATCH done、重复 done、todo 均返回 200，响应 id/title/status 正确，每次再 GET 验证数据库状态一致；删除后 PATCH 返回 404。
+- 专用任务已清理，GET 前后比较确认已有任务未被改动。未模拟真实数据库故障，500 分支仅静态 Review。
+- 接口验收通过。请求层 updateTaskStatus 与页面状态切换尚未实现，继续由学习者独立推进；本轮响应修正明确记录为导师协助，不冒充完全独立完成。
+
 ## 每周验收
 
 - 第 1 周验收日期：2026-10-25。

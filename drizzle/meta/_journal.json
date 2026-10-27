@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1793001078396,
+      "tag": "0000_init_tasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793088500269,
+      "tag": "0001_add_task_status",
+      "breakpoints": true
+    }
+  ]
+}
