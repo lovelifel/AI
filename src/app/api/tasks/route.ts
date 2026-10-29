@@ -1,7 +1,7 @@
-import { CreateTaskRequestSchema } from "@/lib/schemas/task";
+import { CreateTaskRequestSchema, TaskSearchQuerySchema } from "@/lib/schemas/task";
 import { db } from "@/lib/db";
 import { tasks } from "@/lib/db/schema";
-import { asc } from "drizzle-orm";
+import { asc, ilike } from "drizzle-orm";
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -37,11 +37,27 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const input = TaskSearchQuerySchema.safeParse({
+    q: new URL(request.url).searchParams.get("q") ?? "",
+  });
+  if (!input.success) {
+    return Response.json(
+      { error: input.error.issues[0]?.message ?? "搜索参数不合法" },
+      { status: 400 },
+    );
+  }
+
+  const keyword = input.data.q;
+  // Parameterization protects SQL structure; escaping preserves literal search semantics.
+  const escaped = keyword.replace(/[\\%_]/g, "\\$&");
+  const condition = keyword ? ilike(tasks.title, `%${escaped}%`) : undefined;
+
   try {
     const taskList = await db
       .select({ id: tasks.id, title: tasks.title, status: tasks.status })
       .from(tasks)
+      .where(condition)
       .orderBy(asc(tasks.createdAt), asc(tasks.id));
 
     return Response.json({ tasks: taskList });

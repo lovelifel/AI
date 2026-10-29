@@ -26,3 +26,7 @@ export const UpdateTaskStatusSchema = z
     status: TaskStatusSchema,
   })
   .strict();
+
+export const TaskSearchQuerySchema = z.object({
+  q: z.string().trim().max(100, "搜索关键词不能超过 100 个字符").default(""),
+});
