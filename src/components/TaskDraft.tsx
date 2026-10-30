@@ -1,6 +1,8 @@
 "use client";
 import type { Task } from "@/types/task";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { CreateTaskRequestSchema } from "@/lib/schemas/task";
 import {
   createTask,
@@ -9,11 +11,17 @@ import {
   updateTaskStatus,
 } from "@/lib/api/tasks";
 
-export default function TaskDraft({ taskList }: { taskList: Task[] }) {
+export default function TaskDraft({
+  taskList,
+  initialKeyword,
+}: {
+  taskList: Task[];
+  initialKeyword: string;
+}) {
   const [tasks, setTasks] = useState<Task[]>([...taskList]);
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
-  const [keyword, setKeyword] = useState("");
+  const [keyword, setKeyword] = useState(initialKeyword);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -26,13 +34,35 @@ export default function TaskDraft({ taskList }: { taskList: Task[] }) {
   const isMutating = isSubmitting || deletingId !== null || updatingId !== null;
   const isFormDisabled = isMutating || isLoading || Boolean(loadError);
   const query = keyword.trim();
+  const searchParams = useSearchParams();
+  const urlKeyword = (searchParams.get("q") ?? "").trim();
+  const lastUrlKeyword = useRef(initialKeyword);
 
   useEffect(() => {
+    if (lastUrlKeyword.current === urlKeyword) return;
+    lastUrlKeyword.current = urlKeyword;
+    setKeyword(urlKeyword);
+    setLoadError(null);
+    setIsLoading(true);
+    setReloadKey((prev) => prev + 1);
+  }, [urlKeyword]);
+
+  useEffect(() => {
+    if (reloadKey === 0) return;
     let ignore = false;
     const controller = new AbortController();
 
     async function load() {
       try {
+        const url = new URL(window.location.href);
+        if (query) {
+          url.searchParams.set("q", query);
+        } else {
+          url.searchParams.delete("q");
+        }
+        // Remember our own URL write so the listener does not query a second time.
+        lastUrlKeyword.current = query;
+        window.history.replaceState(null, "", url);
         const tasks = await getTasks(query, controller.signal);
         if (!ignore) setTasks(tasks);
       } catch (error) {
@@ -61,6 +91,7 @@ export default function TaskDraft({ taskList }: { taskList: Task[] }) {
     if (nextKeyword.trim() !== query) {
       setLoadError(null);
       setIsLoading(true);
+      setReloadKey((prev) => prev + 1);
     }
   }
 
@@ -170,7 +201,7 @@ export default function TaskDraft({ taskList }: { taskList: Task[] }) {
             <ul>
               {tasks.map((task) => (
                 <li key={task.id} className="flex items-center gap-3">
-                  <span>{task.title}</span>
+                  <Link href={`/tasks/${task.id}`} className="underline underline-offset-4">{task.title}</Link>
                   <span
                     className={
                       task.status === "done"

@@ -951,6 +951,137 @@ Day 3 后续复盘：学习者正确回答 props 改变不会自动覆盖已有�
 - 不能仅以 query 为空跳过请求，否则搜索后清空无法恢复全量列表；相同 trim 结果不启动 loading，也不递增版本。
 - 待验收：首屏无额外列表 GET；搜索与清空正确；重试和新增/删除后仍重新查询。当前仅阅读代码并布置任务，尚未修改业务代码或运行新逻辑。
 
+### 2026-10-29 — 首屏重复 GET 优化 Review 与运行验证
+
+- 学习者独立补齐 Effect 的 reloadKey === 0 早返回，并在归一化关键词变化分支中递增 reloadKey；初始数据仍来自服务端 props，重试及新增/删除后的 reloadSearch 保留递增。业务代码本轮未由导师代改。
+- Review：query 与版本号更新在同一事件中提交；清空查询后版本不会回到 0，仍能查询全量；输入仅增加空格不会错误进入 loading。防抖、取消与过期结果保护保留。
+- 单文件 ESLint、项目 TypeScript 检查通过。新开浏览器任务页正常展示，首屏服务端请求后未观察到额外列表 GET；搜索 Vue 发出 GET /api/tasks?q=Vue，清空发出 GET /api/tasks，两者 200。
+- 当前数据库列表为空，浏览器分别显示“没有匹配的任务”和“暂无任务”。本轮未新增/删除测试记录，写入后重查及重试触发链仅代码 Review，不宣称已重新运行这些场景。
+- 学习结论：没有浏览器 GET /api/tasks 不等于没有数据库查询，首屏查询移到了服务端页面；后续交互仍经客户端请求接口。截图 artifacts/task-initial-query-review.png。
+
+### 2026-10-29 — 服务端首屏错误边界
+
+- 已阅读当前 Next.js 内置 error 文件指南：错误边界为客户端组件，当前版本 retry() 重新取数并渲染；reset() 仅重置边界并重渲染，不应混同。
+- 导师补齐 tasks/error.tsx 的基础错误 UI 与重试按钮，显示稳定提示，不直接展示数据库错误消息。本项 UI 为导师实现，不计学习者独立实现。
+- 要点：服务端 page 的 getData 查询失败时 TaskDraft 尚未渲染，内部 loadError 无法处理；error.tsx 处理首屏渲染异常。客户端搜索、事件处理器的异步请求仍在原 try/catch 中处理，不能指望路由边界接管所有异步错误。
+- loading 负责等待、error 负责失败、page 负责正常内容。当前阶段尚未注入数据库故障或运行重试恢复验收，后续先由学习者区分各错误的处理位置。
+
+### 2026-10-29 — 错误传播实验反馈与服务端查询复用
+
+- 学习者提供浏览器截图：模拟首屏查询失败进入自定义错误页；故障代码保留时点击 retry 再次抛出相同错误，符合预期。导师说明 retry 重新尝试取数渲染，不修复故障本身。
+- 当前源码中的模拟 throw 已注释，不再执行。本轮仅确认源码；去除故障后点击 retry 的真实恢复未独立实测，不记为完整恢复验收。
+- 下一步抽取共享服务端查询：src/lib/server/tasks.ts 导出 listTasks(keyword = "")，包含字段选择、文字包含匹配转义和稳定排序，返回任务数组；保留 server-only，不返回 HTTP Response，不在失败时伪造空数组。
+- 第一轮仅由学习者创建查询函数，暂不替换调用。Review 后页面直接调用；GET 保留 URL/Zod 校验与 HTTP 状态码处理，调用共享函数获取数据。客户端 lib/api/tasks.ts 继续通过 fetch 访问接口，不导入服务端查询。
+- 目的：把可复用的数据访问与 HTTP 协议处理区分，避免页面和接口字段/排序规则漂移；不更改数据库结构或搜索行为。
+
+### 2026-10-29 — listTasks 第一轮 Review
+
+- server-only、关键词特殊字符转义、可选 ilike 条件、字段选择及 createdAt/id 排序均正确；页面和 GET 尚未接入。
+- 待修正：查询函数保留了接口 catch，失败时返回 Response.json(500)。这使返回类型成为任务数组或 Response，并将异常转成普通返回值，调用方无法按预期用 error.tsx 或 GET catch 处理。
+- 本轮指导移除查询函数内的 try/catch，正常返回数组、失败向上传播；HTTP 500 转换仍由 GET 负责。建议声明 Promise<Task[]> 返回类型，使协议响应混入数据层时得到类型提示。
+- 未代改核心代码，未调用数据库验证；当前代码 Review 尚未通过，等待学习者修正后接入调用方。
+
+### 2026-10-29 — listTasks 修正与调用方 Review
+
+- listTasks 已移除 HTTP Response 与 catch，返回 Promise<Task[]>；关键词转义、字段和排序正确。页面已通过 getData 包装调用 listTasks，前端请求文件本轮未改。
+- 后台 GET 接入遗漏 await：const taskList = listTasks(keyword) 得到 Promise，而非任务数组；直接 JSON 序列化会破坏 { tasks: Task[] } 契约，异步查询拒绝也无法被该 try/catch 捕获。
+- 下一步学习者在 GET 的 try 内 await listTasks(keyword)。页面的 getData 薄包装可后续简化，不作为本轮阻塞项。核心代码未代改。
+
+### 2026-10-29 — 共享查询接入验收通过，进入数据流讲解
+
+- 学习者已在后台 GET 的 try 内 await listTasks(keyword)，数据访问和 HTTP 响应职责分开；公共函数与调用方的相关 ESLint、项目 TypeScript 检查通过。
+- 真实 HTTP 搜索回归脚本通过：缺省/空串/空格、大小写、无匹配、%、_、反斜杠、引号、类似注入的文字及 100/101 字符边界；按创建 ID 清理六条专用测试任务，不操作已有任务 ID。
+- 共享查询的实现和接入由学习者完成，导师通过 Review 指出并引导修正 Response 与缺 await 两处问题；记为提示后完成，不记完全独立。
+- 下一步以口头数据流复盘收尾：分别解释首次打开页面与页面内搜索的执行路径、两条路径在何处汇合；再检查查询抛错由谁处理。尚未完成该讲解，不提前标记周验收通过。
+
+### 2026-10-29 — 数据流讲解通过与 URL 搜索参数任务
+
+- 学习者能解释首屏 page/getData/listTasks/初始化状态，以及交互 handleSearchChange/Effect/getTasks/后台 GET/listTasks/setTasks 的两条路径，明确共享查询汇合点。后台 GET 在首次回答中省略，随后明确知道该步骤；本轮讲解通过，不等同于全部周验收。
+- 补充客户端边界：use client 标记模块边界，导入依赖也进入客户端模块图；客户端组件首次加载仍可能参与服务端 HTML 预渲染。
+- 下一项为 URL 参数取数：先让服务端 tasks/page.tsx 读取 searchParams.q，复用 TaskSearchQuerySchema 校验后调用 listTasks(q)。当前版本 searchParams 是 Promise，await 后为普通对象；重复 q 可成为数组，需拒绝而非强制断言成字符串。
+- 本轮仅布置服务端读取与筛选，保留 loading/error 边界。后续再把归一化关键词传给 TaskDraft 初始化输入，并处理导航时的状态同步；输入修改同步 URL、历史导航另行设计，不宣称链接搜索功能已经完成。
+- 目前业务代码未修改。页面参数校验失败使用明确的失败分支，不访问数据库；合法缺省/空格、大小写及超长参数待运行验证。
+
+### 2026-10-29 — 今日收尾
+
+- 学习者明确表示今天不做 URL 参数搜索，本日学习到此结束；该项仅已布置，不记为已实现或已验收，下次先检查代码再继续。
+- 今日完成：Vue 3 nextTick 与 React 状态快照/更新队列口头复习；服务端页面首屏取数及 props 初始化；首屏重复 GET 优化；loading/error 边界和 retry 语义；共享 listTasks 查询抽取、接入及真实搜索回归；页面请求与 RSC Payload 区别；两条数据流讲解。
+- 需要后续巩固：Promise 必须 await 后再序列化或在当前 try/catch 中捕获拒绝；查询函数返回数据，后台接口返回 HTTP 响应；React 更新队列和快照经提示理解，尚待独立迁移题。
+- 保留验证边界：错误页已通过学习者截图验证模拟失败及持续故障下重试再次失败；故障移除后的按钮恢复未单独实测。周独立实现验收尚未完成，不将今日收尾视为周验收通过。
+- 下次起点：tasks/page.tsx 的 searchParams（Promise）、q 参数校验及服务端筛选，再接输入框初始关键词和后续导航状态同步。
+
+## 2026-10-30 — URL 搜索参数与首屏数据一致性
+
+状态：进行中；第一阶段第 2 周，接续昨天暂缓的 URL 参数任务。
+
+- 恢复检查：tasks/page.tsx 仍通过无参数 getData/listTasks 查询全部；TaskDraft 的关键词初始仍为空。URL 参数搜索尚未实现；不因昨天已布置而视为完成。
+- 今日安排约 2 小时：20 分钟理解 URL 与客户端状态的数据来源、服务端参数边界；60 分钟实现页面 searchParams 校验与查询、接入输入框初始关键词；25 分钟检查缺省/空白/重复/超长参数及刷新表现；15 分钟讲解数据流并记录问题。按实际掌握调整，不直接增加 AI 功能。
+- 第一轮由学习者改 page.tsx：await searchParams，使用 TaskSearchQuerySchema.safeParse 校验 { q: params.q ?? "" }；失败展示参数错误且不调用数据库；成功使用归一化 q 调用 listTasks，移除无参数 getData 包装。
+- 当前版本 searchParams 为 Promise，await 后得到普通对象；q 可以是 string、string[] 或 undefined，重复 q 数组交给 schema 拒绝，不能强制断言为 string。
+- 第一轮 Review 后再让 TaskDraft 接收初始关键词，保持首屏列表与输入框一致；URL 导航导致 props 更新时需另行考虑 useState 只初始化一次，不能盲目认为会自动同步。
+- 暂不将输入修改同步 URL 或浏览器前进后退验收混入首轮，不宣称完整可分享搜索已交付。保留 loading/error 边界和现有客户端搜索保护。
+- 本轮仅核对工程与本地 Next.js 指南、记录任务，业务代码尚未代改，未运行验收。
+
+### 2026-10-30 — URL 参数服务端部分 Review
+
+- 学习者已 await searchParams，复用 TaskSearchQuerySchema.safeParse；经提示将 parsed.q 修正为 parsed.data.q，并将参数失败从 throw 改为返回页面提示。
+- 当前直接 safeParse(params) 可行：schema 对 q 提供默认值并 trim，其他 URL 参数按默认对象规则剔除；重复 q 的数组及超长字符串被拒绝。合法参数用于 listTasks(parsed.data.q)，无参数 getData 包装已删除。
+- 页面 ESLint 与项目 TypeScript 检查通过。只读 HTTP 验证缺省、空串、空格、Vue、100 字符均显示任务页面，101 字符及重复 q 显示参数错误；这些页面响应为 200，不与 API 校验失败的 400 混淆。
+- 本轮未创建筛选测试任务，没有单独核对有匹配/无匹配记录的精确集合；后续联同输入初值做浏览器验收。不声称已验证 URL 导航与客户端状态同步。
+- 下一步：页面传递校验后的 initialKeyword，TaskDraft 接收 string 并初始化 keyword；否则列表已按 URL 筛选，但输入框和数量文案仍按空查询显示。仅布置该步骤，未代改业务代码。
+
+### 2026-10-30 — URL 关键词初始化 Review 与浏览器验证
+
+- 学习者将 parsed.data.q 作为 initialKeyword 传入 TaskDraft，组件解构 string 类型 prop，并通过 useState(initialKeyword) 初始化 keyword；相关 ESLint 与项目 TypeScript 检查通过。
+- 使用专用 Vue/React 标题任务验证：打开 /tasks?q=Vue 后输入框为 Vue，显示“匹配”，只展示 Vue 测试项而不展示 React 测试项；清空后显示全量列表与“共”，可以继续操作。
+- 已复现当前阶段限制：清空只改变组件状态，地址仍是 ?q=Vue，刷新恢复 Vue 输入和匹配列表。并非筛选出错，下一步需要设计输入/查询条件与 URL 同步，尚未实现。
+- 截图 artifacts/task-url-keyword-review.png 为临时任务的筛选状态；两条测试任务已按创建返回的专用 ID 删除，不操作其他任务 ID。本轮未改业务代码。
+- 首次进入/刷新初始化验证通过；同一路由客户端导航时 props 变化后的状态同步，以及浏览器前进后退，尚未验收，不等同于完整 URL 搜索交付。
+
+### 2026-10-30 — 搜索与 URL 同步 Review
+
+- 学习者在 Effect 的 load 内、getTasks 前添加 URL 对象与 replaceState：非空 query 设置 q，空 query 删除 q，保留其他参数与 hash。与原先建议的事件分支位置不同，但可实现防抖后、发请求时同步地址；本轮未代改。
+- 相关 ESLint 与项目 TypeScript 检查通过。浏览器从 /tasks?q=Vue&view=list#tasks 开始，输入带空格的 React 后 URL 规范化为 q=React，显示实际匹配项；刷新后输入为 React、结果仍一致。
+- 点击清空后 URL 删除 q，仍保留 view=list 和 #tasks，展示全部任务；刷新后保持空输入与全量列表。浏览器未见错误日志，截图 artifacts/task-url-sync-review.png。本轮未执行数据库写入。
+- 已完成首次打开、搜索与清空后的刷新一致性。地址在防抖后更新，等待期间立即刷新仍可能使用旧 URL；此语义需与即时地址同步区分。
+- replaceState 不增加每次搜索的历史条目；浏览器前进后退、同路径客户端导航产生新 props 后的 useState 同步，尚未完成验收，不将本轮当作全部导航场景通过。
+
+### 2026-10-30 — 客户端导航保留旧状态：已复现，待分析修复
+
+- 下一项聚焦导航与组件身份，未跳到 AI 阶段。已核对本地导航与 useRouter 指南，当前 Cache Components 会涉及状态保留，不能把 Link 导航等同整页刷新。
+- 浏览器实测：首次打开 /tasks?q=React，输入 React 且显示匹配项；点击顶部 Link“任务工作区”后 URL 已变为 /tasks，但输入仍为 React，文案仍为“匹配”。截图 artifacts/task-navigation-state-issue.png。
+- 相关代码将 taskList/initialKeyword 仅用于 useState 初始值，后续 props 变化不自动覆盖本地状态。需要区分用户编辑、History API 只更新地址、真实 RSC 导航与组件重新挂载，不能只以刷新通过判断完整导航正确。
+- 本轮布置学习者复现场景并解释 useState 初始化与状态保留，再讨论修复方案；尚未代改业务代码，也未声称 key 或 props 同步已解决全部情况。
+- 后续修复需同时覆盖直接带 q 进入后导航、空 URL 进入后客户端搜索再导航，以及前进后退；避免只按初始 q 加 key 而遗漏客户端已改变 URL 的路径。
+
+### 2026-10-30 — URL 驱动搜索与导航同步：导师实现（后续已按要求撤回重构）
+
+- 学习者明确授权修改。TaskDraft 通过 useSearchParams 读取 URL 的 q；搜索输入作为 draft，防抖后只负责 replaceState，列表 Effect 只根据 URL 查询条件和显式重查版本取数，避免查询 Effect 反写旧地址。
+- 旧草稿在 q 变化时作有条件的状态调整并丢弃，防止后退到相同关键词时复活未提交输入。该调整采用 React 文档中的受条件保护的渲染期状态调整，不在 Effect 内同步 setState，也不使用定时器规避 lint。
+- 列表结果记录 query、reloadKey 和服务端数组来源；只展示与当前条件相符的结果，新的服务端 props 可以直接作为首屏数据。加载状态由草稿是否待提交、当前结果是否就绪推导，保留 AbortController/ignore 取消与过期保护。
+- reloadKey 现在仅用于重试和写操作后的重查；状态更新采用服务端返回任务替换对应行，并更新结果版本。保留新增表单草稿、写锁和错误展示。非法 URL 查询显示参数提示，不提供无效重试按钮。
+- 浏览器验证：直接带 React 进入再点击 /tasks、从空 URL 搜索后再点击 /tasks，输入和列表均按新 URL 更新；首页往返、后退与前进恢复相应关键词/列表；防抖未提交时导航、再后退，不会让旧输入回写地址。
+- 浏览器写操作回归：在 React 筛选下新增唯一 Vue 测试任务，新项未混入 React 结果；搜索到新任务、标记完成、刷新仍完成、删除后重新查询、清空恢复原列表均成功。只操作测试任务返回的专用 ID，测试记录已清理，未更新或删除原任务。
+- 特殊字符与其他参数验证：Vue & Agent? 正确编码；view=list 和 #tasks 保留；101 字符参数错误后可清空恢复。真实页面网络故障、强制请求乱序注入及生产构建本轮未执行，不宣称覆盖。
+- 本轮实现归属为导师直接完成；先前学习者提出监听 URL 的方向正确。后续讲解聚焦草稿与已提交查询、为什么防抖写 URL 与读取列表不能互相回写，不追加基础 JSX 练习。
+- 最终 npm run lint、TypeScript 检查、请求层查询编码/校验/取消测试均通过；最终导航复验无浏览器错误日志，截图 artifacts/task-url-driven-acceptance.png。生产构建未运行。
+
+### 2026-10-30 — 按学习者要求缩小为 URL 监听改动
+
+- 学习者指出前轮修改过多，明确要求仅监听地址变化。导师撤回 TaskQueryResult、draft、结果来源标记、推导加载状态及状态更新版本重构，恢复学习者原有 tasks/keyword/isLoading/loadError/reloadKey、搜索与增删改逻辑。
+- 在原流程上新增 useSearchParams 获取规范化 q，一个 Effect 在外部 q 变化时同步 keyword、清理读取错误并触发原查询流程。lastUrlKeyword ref 区分程序自身 replaceState 和外部导航，避免自身写 URL 后重复查询。
+- 保留原 300ms 防抖、AbortController/ignore、首屏跳过重复 GET、写锁和按 ID 更新状态；不额外引入查询状态模型或更改项目 lint 规则。
+- 浏览器复验通过：带 React 直接进入后导航到 /tasks、空条件搜索 Vue 后导航到 /tasks、后退恢复 Vue、前进恢复全量，输入框与列表对应 URL。此次未执行数据库写入，不沿用前版写操作回归作为本版实测。
+- 该改动聚焦 q 变化，不处理同一 q 下 router.refresh 后新 props 的额外同步，不声明为所有导航及服务器状态刷新场景的通用方案。
+
+### 2026-10-30 — 任务详情页（进行中）
+
+- 目标：实现 /tasks/[id]，理解路径参数 params、服务端直接查询数据库，以及资源不存在时的 notFound() 边界。
+- 已核对当前安装版本的 page 与 notFound 文档：params 是 Promise；notFound() 会终止当前路由段的渲染，不应当作普通数据库异常捕获。
+- 下一项独立实践：在 src/lib/server/tasks.ts 添加 getTaskById(id)，按 ID 查询并返回 Task 或 undefined；不返回 HTTP Response，不把查询异常转换为“任务不存在”。
+- 后续：接入详情页，校验 UUID 后查询；不存在走 404，数据库故障走 error.tsx。基础展示和列表链接可由导师补齐。
+- 当前状态：已讲解并布置，详情查询、页面及运行验收均未完成。
+
 ## 每周验收
 
 - 第 1 周验收日期：2026-10-25。
@@ -971,3 +1102,15 @@ Day 3 后续复盘：学习者正确回答 props 改变不会自动覆盖已有�
 - 代码 Review 意见与修正结果：
 - 技术复盘与可用于面试的经验：
 - 次日巩固内容：
+
+### 2026-10-30 — 任务详情页代码 Review
+
+- 学习者已修正 safeParse 成功数据读取为 ID.data，并在解构前判断任务是否存在，详情页核心逻辑 Review 通过。
+- 导师补充列表任务名称 Link 和详情段 not-found.tsx，提供返回任务列表入口。
+- TypeScript 与 ESLint 检查通过；真实任务、非法 UUID、合法但不存在 UUID 三种运行场景待学习者验收。
+
+### 2026-10-30 — 详情页动态元信息
+
+- 学习者已用 generateMetadata 替换固定 metadata，按 UUID 查询任务生成 title 和 description，并处理非法 ID、任务不存在两种情况。
+- 代码 Review、TypeScript、ESLint 通过；浏览器标签实际展示待确认。
+- 待巩固：generateMetadata 与页面都会调用 getTaskById，Drizzle 查询不会自动获得 fetch 的请求去重；下一步学习 React cache 在一次服务端渲染中共享查询结果。

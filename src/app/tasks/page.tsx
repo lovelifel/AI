@@ -1,27 +1,27 @@
 import TaskDraft from "@/components/TaskDraft";
-import { db } from "@/lib/db";
-import { tasks } from "@/lib/db/schema";
-import { asc } from "drizzle-orm";
 import type { Metadata } from "next";
-
-const getData = async () => {
-  const taskList = await db
-    .select({ id: tasks.id, title: tasks.title, status: tasks.status })
-    .from(tasks)
-    .orderBy(asc(tasks.createdAt), asc(tasks.id));
-  return taskList;
-};
+import { listTasks } from "@/lib/server/tasks";
+import { TaskSearchQuerySchema } from "@/lib/schemas/task";
 
 export const metadata: Metadata = {
   title: "任务工作区 · Agent Workspace",
 };
-export default async function TasksPage() {
-  const initialTasks = await getData();
+export default async function TasksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const parsed = TaskSearchQuerySchema.safeParse(params);
+  if (!parsed.success) {
+    return <p role="alert">搜索参数不合法</p>;
+  }
+  const initialTasks = await listTasks(parsed.data.q);
   return (
     <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
       <main>
         <h1>任务工作区</h1>
-        <TaskDraft taskList={initialTasks} />
+        <TaskDraft taskList={initialTasks} initialKeyword={parsed.data.q} />
       </main>
     </div>
   );

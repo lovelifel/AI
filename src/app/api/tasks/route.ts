@@ -1,7 +1,7 @@
 import { CreateTaskRequestSchema, TaskSearchQuerySchema } from "@/lib/schemas/task";
 import { db } from "@/lib/db";
 import { tasks } from "@/lib/db/schema";
-import { asc, ilike } from "drizzle-orm";
+import { listTasks } from "@/lib/server/tasks";
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -49,17 +49,8 @@ export async function GET(request: Request) {
   }
 
   const keyword = input.data.q;
-  // Parameterization protects SQL structure; escaping preserves literal search semantics.
-  const escaped = keyword.replace(/[\\%_]/g, "\\$&");
-  const condition = keyword ? ilike(tasks.title, `%${escaped}%`) : undefined;
-
   try {
-    const taskList = await db
-      .select({ id: tasks.id, title: tasks.title, status: tasks.status })
-      .from(tasks)
-      .where(condition)
-      .orderBy(asc(tasks.createdAt), asc(tasks.id));
-
+    const taskList = await listTasks(keyword);
     return Response.json({ tasks: taskList });
   } catch {
     return Response.json(
