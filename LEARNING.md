@@ -1114,3 +1114,135 @@ Day 3 后续复盘：学习者正确回答 props 改变不会自动覆盖已有�
 - 学习者已用 generateMetadata 替换固定 metadata，按 UUID 查询任务生成 title 和 description，并处理非法 ID、任务不存在两种情况。
 - 代码 Review、TypeScript、ESLint 通过；浏览器标签实际展示待确认。
 - 待巩固：generateMetadata 与页面都会调用 getTaskById，Drizzle 查询不会自动获得 fetch 的请求去重；下一步学习 React cache 在一次服务端渲染中共享查询结果。
+
+### 2026-11-02 — Server Actions 与详情页修改标题（待实践）
+
+- 当前核对：getTaskById 已用 React cache 包装，临时查询日志已移除；学习者此前观察同次渲染打印一次，并正确解释缓存不跨请求。详情页三类地址运行结果仍未明确确认。
+- 今日目标：在第一阶段全栈基础范围内，学习 Server Action 与 Route Handler 的边界；用详情页修改标题作小型实践，保留列表现有 PATCH 流程。
+- 理论：use server 标记可通过网络调用的服务端函数；与 server-only 防止客户端导入不同。Action 仍需服务端参数校验和权限检查，不能信任隐藏字段。
+- 实践分步：先理解调用链，再独立实现参数校验与数据库更新；导师补基础表单，接入提交状态、错误反馈和刷新后验收。尚未开始修改业务代码。
+- 时间安排：旧功能核对 10 分钟、理论 15 分钟、实现与 Review 60 分钟、运行验收 20 分钟、Vue3/React 原理复盘 15 分钟。
+- 今日复盘：Vue watch 与 React Effect 的依赖追踪及清理；以项目 URL 搜索为例。周验收仍待独立实现及讲解证据，不倒填通过。
+
+### 2026-11-02 — 标题修改表单接入 useActionState
+
+- 学习者已实现 Action 的 Zod 校验、按 ID 更新、任务不存在及数据库异常处理、成功后 revalidatePath，并调整 prevState/formData 参数。
+- 导师新增 TaskTitleForm 客户端组件，接收任务 ID/标题，使用 useActionState 处理结果与 pending，提交期间保留字段提交并限制编辑，重新输入后隐藏旧反馈。移除详情页临时 submitTitle 包装。
+- 详情页及数据库查询仍在服务端，表单只通过 Server Action 更新。React cache 包装保持不变。
+- TypeScript 与 ESLint 通过；本轮未执行浏览器及数据库写入测试。待验证：成功反馈及标题刷新、纯空格校验、刷新持久化。列表本地状态同步仍未处理，不宣称已完成。
+
+### 2026-11-02 — 标题保存验收与列表同步练习
+
+- 学习者反馈当前保存流程无问题；已澄清带首尾空格的有效标题经 trim 后正常保存。纯空格失败、数据库异常等场景未取得单独运行证据，不标记全面通过。
+- 已讲解 revalidatePath 在 Action 中更新当前受影响页面的数据，不等同于路由跳转或浏览器整页刷新。
+- 下一项实践：观察修改详情标题后返回列表的显示，区分服务端路径数据刷新与 TaskDraft useState 首次初始化的客户端副本；先复现和定位，再做最小同步修改。
+- 列表同步尚未实现或验收。
+
+### 2026-11-02 — 路由与渲染知识回顾
+
+- 已整理 [知识回顾](./KNOWLEDGE_REVIEW.md)：CSR/SSR/SSG 与 SPA/MPA 的维度区分、浏览器解析过程、Next.js 客户端导航、组件状态保留、特殊文件约定、Action 表单数据流与缓存刷新。
+- 文档包含 Vue 对比、当前项目实例和自测问题，后续复习从此入口继续。
+- 本次仅整理文档；列表旧标题的同步问题仍待修正与运行验收，不标记已解决。
+
+### 2026-11-02 — 知识库长期规划
+
+- KNOWLEDGE_REVIEW.md 调整为总目录，原文保留至 docs/knowledge/01-web-rendering-routing-and-next-basics.md。
+- 新增主题规划、条目模板、版本与验收状态标记规则；按实际学习逐步补充，不改变学习阶段。
+- 每日进度仍在本文件，知识库记录原理及复习题，架构文档记录整体设计。
+
+### 2026-11-02 — 标题修改与列表刷新验收
+
+- 已核对 Action 成功后调用详情路径与 /tasks 的 revalidatePath。
+- 学习者运行反馈：详情改名保存后，点击顶部任务工作区返回，列表显示新标题。
+- 学习者运行反馈：在 React 搜索结果进入详情，改为不包含 React 的标题后后退，搜索条件保留，任务退出匹配结果。
+- 证据来源为学习者实际运行反馈；导师本轮未做浏览器自动化复验。无需为已通过场景额外加入客户端状态同步。
+- 本小节功能验收收尾，接续数据流独立复述；不等同于整周独立验收通过。
+
+### 2026-11-02 — 派生数据与编辑草稿
+
+- 复习纠正：Vue ref(props.title) 与 ref(computedValue.value) 是独立初值，不自动跟随来源；React 普通派生表达式在组件重渲染时重新计算。学习者已能判断完成数量应由 tasks 推导。
+- 导师补充标题表单取消修改按钮；hasChanges/canSave 直接计算，不新增状态；取消还原最新 title 并隐藏旧反馈，不提交请求。
+- 空白或去除首尾空格后无变化时禁用保存，服务端 Zod 校验继续保留。此行为调整后，纯空格不会从正常按钮提交；服务端拦截仍需独立验证。
+- 运行待验收：修改后可保存、取消还原且不发送请求、保存成功后再次编辑再取消恢复新标题。
+
+- 派生数据练习验收：学习者反馈保存新标题后再编辑、取消，可恢复刚保存的新标题。导师已将机制及验证范围整理到 docs/knowledge/02-derived-data-and-editing-drafts.md 并登记总目录。
+
+### 2026-11-03 — 服务端分页与查询契约（进行中）
+
+- 接续已完成的标题修改与派生数据练习，仍在第一阶段全栈基础，不提前进入模型 API。
+- 今日目标：理解服务端分页的数据流、page/pageSize/offset/total 契约，以及搜索条件与页码的关系。
+- 安排：理论与契约 20 分钟，服务端查询独立实践及 Review 50 分钟，导师补 UI 与运行验收 35 分钟，JS/React/Vue3 复盘 15 分钟。
+- 分步推进：先定义分页查询参数的 Zod 规则；再实现专用分页查询并接入列表与 GET 接口，保持现有 listTasks 合约直到明确迁移，不混改所有入口。
+- 实践要求：查询参数来自 URL 字符串，页码需转换为正整数；每页先固定 5 条；搜索变化回到第一页，页码变化保留搜索条件；总数统计需使用相同筛选条件。
+- 当前仅讲解及布置，尚未修改业务代码；后续按独立实现、导师接线与实际验收分别记录。
+
+### 2026-11-03 — 分页查询与 GET 接口 Review
+
+- 学习者完成分页参数、响应 Zod Schema、TaskPage 类型和 listTasksPage 查询，旧 listTasks 保持全量。分页与 count 使用相同搜索条件及稳定排序。
+- Review 中纠正：分页调用缺 await、误将旧查询默认限制五条、GET 校验后漏传 page。类型检查不能发现可选参数漏传造成的逻辑错误。
+- 本轮对 localhost:3000 GET 执行只读分页及非法参数复验，未写入数据库；具体返回结果见本轮工具输出。
+- 待接入前端分页请求和初始页面数据、翻页与搜索页码联动；当前页面尚未完成分页，不作为完整功能验收。
+
+### 2026-11-03 — 分页前后台接线与运行验收
+
+- 学习者完成首屏 listTasksPage 接入与 getTasksPage；导师 Review 后修正 URL 编码及 GET 漏传页码，类型检查通过。
+- 导师将 TaskDraft 接收参数改为 initialResult，保存完整分页结果、独立请求页码、派生总页数，补翻页按钮、搜索回到首页与 URL q/page 同步，保留防抖、取消与写锁。
+- 浏览器实际验证：6 条唯一测试任务按 5+1 分页、下一页 URL、第二页刷新、搜索变化回第一页、删除第二页唯一任务自动回退、状态更新与返回全量列表；均成功。
+- 测试数据使用 Page1103-053465 前缀，仅操作创建返回的 6 个专用 ID，已全部清理，未修改原有任务。截图 artifacts/task-pagination-acceptance.png 是清理后的页面。
+- 已补知识条目 docs/knowledge/03-server-pagination-and-query-contracts.md。保留 replaceState 不新增每页历史项；直接超出总页数的首屏空页策略、并发增删、故障注入和生产构建未全面验收。
+- 代码归属：查询/契约/请求方法由学习者提示后实现，分页 UI/客户端联动由导师实现；尚待学习者实际复验与数据流复述，不记整周独立验收通过。
+
+### 2026-11-03 — redirect 越界页修正与验收
+
+- 学习者完成页面层越界跳转，经 Review 修正分支位置、目标页码及 initialKeyword 类型，TypeScript 通过。
+- 浏览器验证带 React & Vue 搜索词的 page=99 跳到 page=1，搜索词完整保留；正常 /tasks 无循环跳转。截图 artifacts/task-pagination-redirect.png，未写数据库。
+- 已更新分页知识条目的边界策略和 redirect/revalidatePath 区别。
+
+### 2026-11-03 — Promise.all 并行查询
+
+- 学习者将分页记录查询与总数查询交给同一个 Promise.all，按输入顺序解构，保持筛选、排序与返回契约不变；代码 Review 和 TypeScript 检查通过。
+- 本轮只读请求复验 GET 第一页，不执行数据库写入；不宣称压测或性能提升测量已完成。
+- 待口头巩固：结果顺序不随完成顺序改变；任一拒绝导致整体拒绝，不会自动取消其他查询；并行不保证同一数据库快照。
+
+### 2026-11-03 — 独立实现验收：任务状态筛选（待开始）
+
+- Promise.all 口头复习：学习者正确解释结果按输入顺序排列；失败行为经提示纠正为整体拒绝，其他任务不自动取消。
+- 验收目标：在现有搜索分页上增加可选 status=todo/done，缺省表示全部；列表查询和总数统计复用相同组合条件，切换筛选回第一页，分页保留筛选。
+- 分步实施：先独立修改 TaskListQuerySchema 和 listTasksPage 的筛选条件，再 Review；后续统一接入页面、GET、请求方法与基础 UI。暂不计验收通过。
+
+### 2026-11-03 — 状态筛选前后台接线与验收
+
+- 学习者提示后补齐 optional 状态校验、and 组合条件、GET/page 参数传递、越界重定向保留状态与 getTasksPage 可选第四参数；查询/计数复用条件，类型检查通过。
+- 导师补初始状态 prop、下拉框、q/page/status URL 同步、切换回首页；筛选中状态更新改用重查，同步成员、total 及页码，保留防抖取消与写锁。
+- 浏览器实测：todo 第二页首屏、切 done 回首页、todo 第二页唯一任务改 done 后退出并回退、搜索和状态组合、越界跳转保留状态、顶部返回全部均通过；类型与 lint 通过。
+- 专用前缀 Status1103-311411 的 7 条测试记录已按创建返回 ID 清理，原任务未修改。截图 artifacts/task-status-filter-acceptance.png 是清理后的页面。
+- 已更新分页知识条目；实现归属区分为提示后完成与导师补齐，尚待学习者复验与口头解释，不记整周独立验收通过。
+
+### 2026-11-03 — 下一主题：登录会话与任务权限（理论开始）
+
+- 现有工程核对：没有用户表、任务归属字段或认证依赖，当前任务是共享数据；查询、PATCH/DELETE 与标题 Action 尚无用户权限隔离。
+- 阅读当前安装 Next.js 认证指南，先区分 Authentication、Session Management、Authorization；具体库选型、用户表迁移和登录接入尚未开始，不自行实现密码加密或伪造会话。
+- 后续目标：从可信服务端会话取得用户 ID，所有任务读取/修改按归属限制；前端隐藏按钮不能替代服务端校验。先讲解边界再分步设计，尚不安装依赖或修改数据表。
+
+### 2026-11-03 — 认证库选型：Better Auth（待安装）
+
+- 核对已安装 Next.js 认证指南及 cacheComponents 认证边界，并查阅 Better Auth 官方安装、Next.js 集成、Drizzle adapter 文档。
+- 接入方向：Better Auth + Drizzle adapter + 现有 PostgreSQL，采用邮箱密码及数据库会话逐步学习。认证库管理会话，不替代任务归属校验。
+- 下一步由学习者安装 better-auth 与 @better-auth/drizzle-adapter；安装后必须核对实际版本和导出，再写配置，避免官方页面新旧导入示例差异。
+- 业务代码、数据表和会话尚未接入。相关来源：https://better-auth.com/docs/installation 、https://better-auth.com/docs/adapters/drizzle 、https://better-auth.com/docs/integrations/next 。
+
+### 2026-11-03 — Better Auth 配置 Review
+
+- 已核对 better-auth 与 @better-auth/drizzle-adapter 均为 1.7.15，现有 Drizzle 0.45.4 在适配器 peer 范围内。
+- 仅检查环境变量是否存在，未输出密钥；学习者创建 src/lib/auth.ts，开启邮箱密码，复用 pg Drizzle 连接，类型检查通过。
+- 下一步用匹配版本 CLI generate 输出独立 auth-schema.ts，先 Review 再纳入 Drizzle 迁移；不得覆盖现有任务表定义，不直接执行 migrate/push。
+- CLI 配置加载时的 server-only 与 .env.local 兼容尚未实际验证，如失败需针对错误调整，不移除业务服务端边界保护。
+
+### 2026-11-03 — 认证 CLI 与 server-only 边界排错
+
+- 实际错误：独立 auth CLI 加载 src/lib/auth.ts 时无法解析 server-only；不是数据库连接或查询问题。保留运行配置与 db 模块的 server-only 保护。
+- 导师新增 CLI 专用 auth-schema.config.ts，显式读取 .env.local（不输出密钥），使用 generate --adapter drizzle --dialect postgresql，无需导入 db。
+- src/lib/auth-options.ts 共享影响表结构的认证选项，运行配置与生成配置都复用，避免双份开关漂移；这些文件名均为自定义组织。
+- 使用已下载的 auth 1.7.15 CLI 成功生成 src/lib/db/auth-schema.ts，包含 user/session/account/verification 及关联，TypeScript 与 ESLint 通过。CLI 的模块类型警告不影响此次生成，未为此改 package.json 模块模式。
+- 尚未纳入 drizzle.config.ts、尚未生成迁移 SQL，也未执行数据库迁移，登录接口仍未接入。
+- 可复用命令：npx.cmd auth@1.7.15 generate --config ./auth-schema.config.ts --adapter drizzle --dialect postgresql --output ./src/lib/db/auth-schema.ts 。重新生成前先检查已有文件差异。

@@ -30,3 +30,18 @@ export const UpdateTaskStatusSchema = z
 export const TaskSearchQuerySchema = z.object({
   q: z.string().trim().max(100, "搜索关键词不能超过 100 个字符").default(""),
 });
+
+export const TaskListQuerySchema = z.object({
+  q: z.string().trim().max(100).default(""),
+  page: z.coerce.number().int().min(1).default(1),
+  status: TaskStatusSchema.optional(),
+});
+
+export const TaskPageResponseSchema = z.object({
+  tasks: z.array(TaskSchema),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+  total: z.number().int().min(0),
+});
+
+export type TaskPage = z.infer<typeof TaskPageResponseSchema>;

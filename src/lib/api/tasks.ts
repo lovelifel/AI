@@ -1,8 +1,10 @@
 import type { Task } from "@/types/task";
+import type { TaskPage } from "@/lib/schemas/task";
 import {
   ApiErrorSchema,
   CreateTaskResponseSchema,
   ListTasksResponseSchema,
+  TaskPageResponseSchema,
 } from "@/lib/schemas/task";
 export async function createTask(input: { title: string }): Promise<Task> {
   const response = await fetch("/api/tasks", {
@@ -44,6 +46,36 @@ export async function getTasks(q = "", signal?: AbortSignal): Promise<Task[]> {
     throw new Error("服务端返回的任务列表格式不正确");
   }
   return parsed.data.tasks;
+}
+
+export async function getTasksPage(
+  q = "",
+  page = 1,
+  signal?: AbortSignal,
+  status?: Task["status"],
+): Promise<TaskPage> {
+  const params = new URLSearchParams();
+  if (q.trim()) params.set("q", q.trim());
+  if (status) {
+    params.set("status", status);
+  }
+  params.set("page", String(page));
+  const response = await fetch(`/api/tasks?${params.toString()}`, {
+    signal,
+    cache: "no-store",
+  });
+  const data: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const failure = ApiErrorSchema.safeParse(data);
+    throw new Error(
+      failure.success ? failure.data.error : "无法获取任务列表，请稍后重试",
+    );
+  }
+  const parsed = TaskPageResponseSchema.safeParse(data);
+  if (!parsed.success) {
+    throw new Error("服务端返回的任务列表格式不正确");
+  }
+  return parsed.data;
 }
 
 export async function deleteTask(id: string): Promise<void> {

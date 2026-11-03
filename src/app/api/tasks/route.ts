@@ -1,7 +1,10 @@
-import { CreateTaskRequestSchema, TaskSearchQuerySchema } from "@/lib/schemas/task";
+import {
+  CreateTaskRequestSchema,
+  TaskListQuerySchema,
+} from "@/lib/schemas/task";
 import { db } from "@/lib/db";
 import { tasks } from "@/lib/db/schema";
-import { listTasks } from "@/lib/server/tasks";
+import { listTasksPage } from "@/lib/server/tasks";
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -38,8 +41,11 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
-  const input = TaskSearchQuerySchema.safeParse({
+  const searchParams = new URL(request.url).searchParams;
+  const input = TaskListQuerySchema.safeParse({
     q: new URL(request.url).searchParams.get("q") ?? "",
+    page: searchParams.get("page") ?? undefined,
+    status: searchParams.get("status") ?? undefined,
   });
   if (!input.success) {
     return Response.json(
@@ -48,10 +54,13 @@ export async function GET(request: Request) {
     );
   }
 
-  const keyword = input.data.q;
   try {
-    const taskList = await listTasks(keyword);
-    return Response.json({ tasks: taskList });
+    const result = await listTasksPage(
+      input.data.q,
+      input.data.page,
+      input.data.status,
+    );
+    return Response.json(result);
   } catch {
     return Response.json(
       { error: "读取任务失败，请稍后重试" },

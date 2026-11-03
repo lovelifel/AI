@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { getTaskById } from "@/lib/server/tasks";
+import TaskTitleForm from "@/components/TaskTitleForm";
 
 export default async function TaskDetailPage({
   params,
@@ -19,7 +20,13 @@ export default async function TaskDetailPage({
     notFound();
   }
 
-  return <h1>{task.title}</h1>;
+  return (
+    <main>
+      <h1>{task.title}</h1>
+
+      <TaskTitleForm key={task.id} id={task.id} title={task.title} />
+    </main>
+  );
 }
 
 export async function generateMetadata({
