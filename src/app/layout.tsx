@@ -29,6 +29,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <nav className="flex gap-4 mx-auto py-6">
           <Link href="/">首页</Link>
           <Link href="/tasks">任务工作区</Link>
+          <Link href="/login">登录与注册</Link>
         </nav>
         {children}
       </body>

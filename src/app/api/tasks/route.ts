@@ -5,6 +5,7 @@ import {
 import { db } from "@/lib/db";
 import { tasks } from "@/lib/db/schema";
 import { listTasksPage } from "@/lib/server/tasks";
+import { getCurrentUser } from "@/lib/server/session";
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -55,6 +56,11 @@ export async function GET(request: Request) {
   }
 
   try {
+    const user = await getCurrentUser();
+
+    if (!user) {
+      return Response.json({ error: "请先登录" }, { status: 401 });
+    }
     const result = await listTasksPage(
       input.data.q,
       input.data.page,

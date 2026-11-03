@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { listTasksPage } from "@/lib/server/tasks";
 import { TaskListQuerySchema } from "@/lib/schemas/task";
 import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/server/session";
 
 export const metadata: Metadata = {
   title: "任务工作区 · Agent Workspace",
@@ -16,6 +17,11 @@ export default async function TasksPage({
     status?: string | string[];
   }>;
 }) {
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect("/login");
+  }
+
   const params = await searchParams;
   const parsed = TaskListQuerySchema.safeParse(params);
   if (!parsed.success) {

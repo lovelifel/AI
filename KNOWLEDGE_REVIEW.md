@@ -12,6 +12,10 @@ Agent Workspace 长期知识库入口。按主题拆分，避免所有知识堆�
 
 ## 已有条目
 
+- [05 · JavaScript 闭包](docs/knowledge/05-javascript-closures.md)：词法作用域、函数创建与执行、withAuth 参数来源、独立调用环境及自测。
+
+- [04 · 身份认证、会话与业务权限](docs/knowledge/04-authentication-sessions-and-authorization.md)：认证分工、数据库会话、文件职责、CLI 排错、注册登录验收和待实现的业务授权。
+
 - [03 · 服务端分页与查询契约](docs/knowledge/03-server-pagination-and-query-contracts.md)：参数、响应、数据流、Review 问题和运行验收。
 
 | 文档 | 内容 | 状态 |

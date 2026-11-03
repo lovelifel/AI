@@ -1253,3 +1253,42 @@ Day 3 后续复盘：学习者正确回答 props 改变不会自动覆盖已有�
 - 导师检查：新增 account/session/user/verification 四表、两个关联 user 的级联删除外键、邮箱与 token 唯一约束和相关索引；没有 DROP 或修改现有 tasks 表的语句。
 - 下一步学习者执行 drizzle-kit migrate，随后检查实际数据库表及 __drizzle_migrations。目前只完成文件 Review，不提前标记数据库已应用。
 - 运行认证仍需向 adapter 显式传入认证 schema（现有 db 未注册 schema），以及挂载认证 Route Handler；这两项尚未接入。
+
+### 2026-11-03 — 认证表迁移实际验收
+
+- 学习者执行 migrate 后，导师通过 pg 只读查询确认 public 下 account/session/user/verification 四表及原 tasks 表存在。
+- drizzle.__drizzle_migrations 共 3 条，最新 created_at 与 0002_add_auth_tables 的 journal 时间一致。此次未查询用户资料、凭证或会话内容。
+- 下一步在运行时 drizzleAdapter 传入 auth-schema 模块，明确表映射，再接认证路由。
+
+### 2026-11-03 — 注册、登录、退出与会话页面验收
+
+- 导师新增 auth-client.ts、AuthPanel.tsx、/login 页面及导航入口，使用 Better Auth 客户端 API 与 useSession，不自己保存 Cookie/token 或密码，不把认证当作业务权限。
+- TypeScript、ESLint 通过；浏览器用专用本地账号验证注册自动登录、刷新保持会话、退出、错误密码提示、正确密码重新登录。
+- 数据库只统计专用测试用户的账号/会话数量，未读取或输出凭证。测试后按用户 ID 与专用邮箱共同限定清理用户，关联账号/会话数量均为零，未改原任务。
+- 清空表单后的截图 artifacts/auth-login-acceptance.png；知识条目 docs/knowledge/04-authentication-sessions-and-authorization.md 已加入目录。
+- 尚未实现任务归属或业务 API/Action 的用户授权；邮箱验证、找回密码和生产部署未验收。基础页面为导师实现，后续学习者需实际注册及解释数据流。
+
+### 2026-11-03 — 服务端会话与 GET 登录检查
+
+- 学习者实现 getCurrentUser：headers 传入 Better Auth getSession，有会话返回 user，无会话返回 null，异常向上传播；类型检查通过。
+- GET 在 try 内调用该函数，未登录返回 401。导师用不带 Cookie 的只读请求实测返回 401 与请先登录，未写数据库。
+- 待学习者在浏览器实际登录后验证 GET 返回 200，再退出验证 401。任务页面服务端直接查询、POST/PATCH/DELETE 与标题 Action 尚未补齐认证，任务归属未实现；不称为完整访问保护。
+
+- GET 会话验收补充：学习者反馈同浏览器登录后返回正常分页数据，退出后返回 401；记为学习者运行反馈通过。下一步为直接访问数据库的任务页面补登录检查，不能依赖 API 的认证间接保护页面。
+
+### 2026-11-03 — 任务列表页登录保护
+
+- 学习者授权导师补基础检查；tasks/page.tsx 查询前调用 getCurrentUser，无用户 redirect 到 /login，会话查询异常不吞掉。
+- TypeScript、ESLint 通过，浏览器无会话直接访问 /tasks 实际跳转 /login；截图 artifacts/tasks-login-guard.png。未新建账号或修改任务。
+- 本轮未重新验证带有效会话的页面访问。详情页及其 metadata、POST/PATCH/DELETE、标题 Action 和任务归属仍待保护。
+
+### 2026-11-03 — 学习收尾：withAuth、高阶函数与闭包
+
+- 学习者在 src/lib/server/api-auth.ts 实现 withAuth，经指导补齐 Handler/User 类型、返回请求处理函数，并向业务回调传 request/user。
+- 已用实际代码和分步演示解释：withAuth(fn) 在模块加载时创建并返回函数，不立即查询会话；Next.js 收到请求后调用导出的 GET(request)，内层才读取用户并调用 fn(request,user)。
+- 学习者先误判包装阶段会查询用户，经区分创建/执行后理解；能解释内层引用外层 fn 构成闭包，request 则是每次请求传入的新参数。后续仍需独立迁移验证。
+- 当前 GET 仍使用原有 getCurrentUser 检查，尚未接入 withAuth；包装器尚未补统一异常处理及动态路由 context 支持，不称为通用封装完成。
+- 下次从 GET 接入 withAuth 和错误边界继续，再分步补详情/metadata、写接口、Action 认证及任务归属；不提前标记完整权限隔离。
+- 学习者明确今日结束，停止新增开发任务。
+
+- 应学习者要求，闭包已独立归档至 docs/knowledge/05-javascript-closures.md，并加入知识库目录；涵盖 withAuth 捕获 fn、request 来源、创建与调用时机、独立环境、易错点和面试自测。与认证条目交叉链接，记录提示后理解与尚待独立验收的边界。
