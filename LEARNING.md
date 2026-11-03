@@ -1246,3 +1246,10 @@ Day 3 后续复盘：学习者正确回答 props 改变不会自动覆盖已有�
 - 使用已下载的 auth 1.7.15 CLI 成功生成 src/lib/db/auth-schema.ts，包含 user/session/account/verification 及关联，TypeScript 与 ESLint 通过。CLI 的模块类型警告不影响此次生成，未为此改 package.json 模块模式。
 - 尚未纳入 drizzle.config.ts、尚未生成迁移 SQL，也未执行数据库迁移，登录接口仍未接入。
 - 可复用命令：npx.cmd auth@1.7.15 generate --config ./auth-schema.config.ts --adapter drizzle --dialect postgresql --output ./src/lib/db/auth-schema.ts 。重新生成前先检查已有文件差异。
+
+### 2026-11-03 — 认证表迁移 SQL Review
+
+- 学习者将 drizzle.config.ts schema 改为任务表与认证表路径数组，并生成 0002_add_auth_tables.sql。
+- 导师检查：新增 account/session/user/verification 四表、两个关联 user 的级联删除外键、邮箱与 token 唯一约束和相关索引；没有 DROP 或修改现有 tasks 表的语句。
+- 下一步学习者执行 drizzle-kit migrate，随后检查实际数据库表及 __drizzle_migrations。目前只完成文件 Review，不提前标记数据库已应用。
+- 运行认证仍需向 adapter 显式传入认证 schema（现有 db 未注册 schema），以及挂载认证 Route Handler；这两项尚未接入。
