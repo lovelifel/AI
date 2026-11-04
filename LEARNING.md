@@ -1292,3 +1292,66 @@ Day 3 后续复盘：学习者正确回答 props 改变不会自动覆盖已有�
 - 学习者明确今日结束，停止新增开发任务。
 
 - 应学习者要求，闭包已独立归档至 docs/knowledge/05-javascript-closures.md，并加入知识库目录；涵盖 withAuth 捕获 fn、request 来源、创建与调用时机、独立环境、易错点和面试自测。与认证条目交叉链接，记录提示后理解与尚待独立验收的边界。
+
+### 2026-11-04 — 认证包装器接入与异常边界（进行中）
+
+- 当前核对：withAuth 已有类型、会话验证和业务函数传参；GET 仍手写 getCurrentUser，尚未接入包装器。
+- 今日计划：理论与昨日闭包复习 15 分钟；包装器异常处理及 GET 接入 40 分钟；认证入口逐步补齐及运行验收 50 分钟；知识复盘 15 分钟。任务归属迁移视完成情况另行分步安排，不提前标记数据隔离。
+- 第一项独立实践：withAuth 内统一 try/catch 覆盖会话查询和业务处理，返回稳定 500；执行异步回调时使用 return await fn(request,user)，确保当前 catch 捕获其拒绝。未登录分支保留 401。
+- 后续迁移 GET 保留参数校验、分页查询与响应契约，不在业务回调重复查询会话。当前未修改业务代码。
+
+### 2026-11-04 — withAuth 与 GET 接入 Review
+
+- 学习者在包装器中用 try/catch 覆盖会话查询和业务执行，使用 return await fn 捕获异步拒绝，失败返回稳定 500。
+- 学习者将 GET 改为 withAuth 回调，删除重复会话检查与 catch，保留查询参数校验及分页返回；代码 Review、TypeScript、ESLint 通过。
+- 导师不带 Cookie 只读实测 /api/tasks 和 page=0 均返回 401，证明先认证再进入业务回调。
+- 本轮带有效会话的 200 与非法参数 400 待学习者验证；未实际注入异常，不宣称 500 路径运行验收。POST 与动态 ID 接口尚未接包装器，任务归属未完成。
+
+- GET 带会话验收：学习者反馈登录后正常查询返回 200、page=0 返回 400，认证优先与参数校验分工通过学习者运行反馈验证。下一步迁移 POST，保留 request.json 解析失败的 400，数据库异常交包装器 500。
+
+### 2026-11-04 — POST 接入 withAuth Review
+
+- 学习者将 POST 改为包装器回调，保留 JSON 解析错误与 Zod 失败的 400，移除数据库外层 catch，成功保持 201 { task }。
+- 代码 Review、TypeScript、ESLint 通过；导师无 Cookie 发送非法 JSON 实测 401，认证先于请求体解析且未写入数据。
+- 登录状态下的非法 JSON/纯空格 400，以及有效新增 201 本轮尚未复验，继续区分静态检查和运行验收。
+
+- POST 登录态错误输入验收：学习者反馈非法 JSON 和纯空格标题均按预期返回 400，未触发新增。下一项为动态 ID 路由包装器的 context 透传。
+
+### 2026-11-04 — 动态路由 context 与 DELETE Review
+
+- 学习者将 Handler/withAuth 改为泛型 Context，返回函数接收 Next.js context 并作为第三参数传给业务回调；GET/POST 类型兼容。
+- DELETE 已接包装器，保留 UUID 校验、按 ID where、404 与无响应体 204，移除数据库 catch；TypeScript、ESLint 通过。
+- 导师无 Cookie 对 not-a-uuid 发 DELETE 返回 401，无写入；此项未进入业务回调，不能作为 params 透传及实际删除的运行证明。后续登录态需验证 400/404/204。PATCH 尚未接入。
+
+### 2026-11-04 — PATCH 迁移及认证接口统一运行验收
+
+- 学习者授权导师补 PATCH 重复接线：改为 withAuth，转交 context.params，保留 JSON/UUID/状态校验、404 和 200 { task }，where 使用校验后的 result.data。类型与 lint 通过。
+- 无 Cookie PATCH 实测 401。随后临时本地账号执行 13 项认证态请求，验证 POST 201、错误 JSON/空白标题/非法状态/UUID 400、PATCH 200 返回正确 ID/状态、DELETE 204 无正文及后续 404，动态参数透传生效。
+- 仅操作测试时创建并返回 ID 的任务；临时账号退出后按专用 ID/邮箱清理，账号与会话级联删除，任务清理已确认，未改原有任务；不输出凭证。
+- 已更新认证及闭包知识条目。GET/POST/DELETE 为学习者提示后接入，PATCH 为导师实现；500 故障路径未注入验证。详情与 metadata、标题 Action、任务归属仍待完成。
+
+### 2026-11-04 — 导师补页面、metadata 与标题 Action 认证
+
+- 学习者明确要求重复简单接线由导师直接完成。标题 Action 在原 try 内先查询会话，无用户返回失败状态；详情正文和 generateMetadata 共用 getVisibleTask，先登录检查再查任务。
+- 实际登录验收发现会话签名校验触发当前版本 Blocking Route 提示；查阅本地 authentication-with-cache-components 指南后，详情页设置 instant=false，明确允许请求期等待。不改全局 cacheComponents，不缓存用户身份。
+- 浏览器临时账号创建专用任务，登录态详情正文/动态标题及 Action 保存成功；另一页面退出后，在旧详情表单再次保存，提示请先登录。pg 只读确认标题未被未登录提交修改；刷新详情跳转 /login。
+- TypeScript、ESLint 通过。临时任务按创建返回 ID 清理、临时用户按唯一测试邮箱清理；未修改原有数据。截图 artifacts/task-action-login-guard.png 是被拒绝的临时详情提交，记录已清理。
+- 认证知识条目已更新；本轮为导师实现，不记独立实践。下一步设计 tasks 用户归属及历史数据迁移，再按用户隔离查询和写入；当前只有登录检查，尚无跨用户授权。
+
+### 2026-11-04 — 任务归属设计（进行中）
+
+- 实际只读核对：当前 tasks 为 0 条，user 为 1 条，仅统计数量，不输出个人资料。认证表 user.id 使用 text，任务主键 UUID 不决定归属字段类型。
+- 设计：tasks.userId 使用 text 外键关联 user.id，新增任务归属来自可信会话，列表/计数/详情/写操作均需限制归属；API 响应不必暴露所有者字段。
+- 因当前任务表为空，可以直接规划 NOT NULL 字段，无需给历史任务猜测归属；其他环境如有旧数据，应另做回填迁移。默认外键删除行为保留，不启用自动删除任务的 cascade。
+- 下一项独立实践：修改任务 schema 并生成 add_task_owner SQL，先 Review，再协同修改写入与读取并应用迁移；目前不标记权限隔离完成。
+
+### 2026-11-04 — 归属字段与新增入口接入
+
+- 学习者已添加 userId text NOT NULL 外键并生成 0003_add_task_owner.sql；Review 确认只新增列与关联 user.id 的外键，无删除语句。
+- 原 POST 类型检查提示缺少必填 userId；导师补重复接线：回调接收已验证 user，插入使用 userId:user.id，不读取前端归属字段。修改后 TypeScript 通过。
+- 本轮未执行 migrate。列表、计数、详情及修改/删除仍需按用户限制，不称为数据隔离完成。
+
+### 2026-11-04 — 任务归属迁移实际验收
+
+- 学习者提供 migrate 启动日志后，导师直接只读核对实际数据库：tasks.user_id 为 text NOT NULL，外键关联 user.id 存在；迁移记录共 4 条，最新时间与 0003_add_task_owner journal 一致，确认已应用。
+- 不以驱动启动日志推断成功。下一步 listTasksPage 使用必传服务端 userId 限制列表与 count，所有调用入口同步传可信会话用户；详情及写入归属限制待接。

@@ -84,6 +84,15 @@ CLI 可以在不加载 db 的情况下生成表定义；重新生成时检查文
 
 ## 自测与资料
 
+### 2026-11-04：页面、metadata 与 Action 认证补齐
+
+- 列表页已有认证。详情 page 与 generateMetadata 共用 getVisibleTask：先验证会话，未登录 redirect，再校验 UUID 并查询任务。动态元信息同样可能暴露数据，不能漏掉。
+- 标题 Action 复用 getCurrentUser，无会话返回 { success:false, error:"请先登录" }，不返回 HTTP Response；查询会话异常交原有 catch 处理。
+- 页面检查不能替代 Action 的检查：页面打开后，会话仍可能退出或过期。浏览器实际验证另一页退出后，旧详情表单保存被拒绝，数据库标题保持已保存值；重新访问详情跳到 /login。
+- 登录态会话签名校验触发当前版本的 Blocking Route 提示。按本地认证指南，详情页显式 export const instant = false，允许该路由等待请求完成认证；保持 cacheComponents、会话校验及现有 loading 边界。此项不是跨用户缓存会话，也不等于已经完成即时导航优化。
+- 类型、lint 与上述运行验证通过。测试只操作专用临时用户和任务，均已清理。
+- 当前仍缺任务归属字段及归属查询条件；已登录用户之间的数据隔离尚未完成。后续修改需区分“登录检查”和“任务授权”。
+
 ### withAuth 与闭包：创建和执行是两个时机
 
 完整 JavaScript 原理与自测见 [闭包专题](05-javascript-closures.md)，本节保留认证包装器的上下文。
@@ -106,6 +115,18 @@ export function withAuth(fn: Handler) {
 - 内层函数保留外层 fn 的引用，这是闭包；request 是每次调用内层函数传入的新参数，不是外层捕获值。
 - Handler 返回类型 Response | Promise<Response> 同时允许同步、异步业务函数。
 - 2026-11-03 收尾时，包装器已经编写，但 GET 尚未迁移；统一异常处理及动态路由 context 支持仍未实现。
+
+2026-11-04 更新：GET、POST、DELETE 已由学习者接入包装器，PATCH 由导师接入。包装器增加统一 try/catch，使用 return await fn(...) 捕获异步拒绝；增加泛型 Context 接收 Next.js 的第二参数，并转交为业务函数第三参数。下面是更新后的调用关系：
+
+```text
+Next.js 调用返回的处理函数(request, context)
+→ getCurrentUser 验证会话
+→ fn(request, user, context)
+```
+
+独立返回的 400/404/204/200/201 不应被包装器改变；会话与未知业务异常由包装器返回稳定 500。API 包装器不用于捕获页面 redirect/notFound。认证可用仍不代表任务归属隔离完成。
+
+实际请求验收：无会话 GET/POST/DELETE/PATCH 已分别验证 401；临时账号登录后验证 13 项请求，包括 POST 201、非法 JSON/空格标题/状态/UUID 的 400、PATCH 200、查无任务的 404、DELETE 204 且响应体为空。动态参数透传已由实际更新删除验证，临时账号、会话和任务已清理。未注入数据库故障，不宣称 500 路径已运行验收。
 
 复习题：加载模块执行 withAuth(fn) 时会查询用户吗？收到请求后由谁传入 request？外层返回后为什么仍能调用 fn？
 

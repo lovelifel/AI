@@ -5,9 +5,9 @@ import {
 import { db } from "@/lib/db";
 import { tasks } from "@/lib/db/schema";
 import { listTasksPage } from "@/lib/server/tasks";
-import { getCurrentUser } from "@/lib/server/session";
+import { withAuth } from "@/lib/server/api-auth";
 
-export async function POST(request: Request) {
+export const POST = withAuth(async (request, user) => {
   let body: unknown;
   try {
     body = await request.json();
@@ -22,26 +22,19 @@ export async function POST(request: Request) {
     );
   }
 
-  try {
-    const [task] = await db
-      .insert(tasks)
-      .values({ title: result.data.title })
-      .returning({ id: tasks.id, title: tasks.title, status: tasks.status });
+  const [task] = await db
+    .insert(tasks)
+    .values({ title: result.data.title, userId: user.id })
+    .returning({ id: tasks.id, title: tasks.title, status: tasks.status });
 
-    if (!task) {
-      throw new Error("插入任务未返回记录");
-    }
-
-    return Response.json({ task }, { status: 201 });
-  } catch {
-    return Response.json(
-      { error: "保存任务失败，请稍后重试" },
-      { status: 500 },
-    );
+  if (!task) {
+    throw new Error("插入任务未返回记录");
   }
-}
 
-export async function GET(request: Request) {
+  return Response.json({ task }, { status: 201 });
+});
+
+export const GET = withAuth(async (request) => {
   const searchParams = new URL(request.url).searchParams;
   const input = TaskListQuerySchema.safeParse({
     q: new URL(request.url).searchParams.get("q") ?? "",
@@ -55,22 +48,10 @@ export async function GET(request: Request) {
     );
   }
 
-  try {
-    const user = await getCurrentUser();
-
-    if (!user) {
-      return Response.json({ error: "请先登录" }, { status: 401 });
-    }
-    const result = await listTasksPage(
-      input.data.q,
-      input.data.page,
-      input.data.status,
-    );
-    return Response.json(result);
-  } catch {
-    return Response.json(
-      { error: "读取任务失败，请稍后重试" },
-      { status: 500 },
-    );
-  }
-}
+  const result = await listTasksPage(
+    input.data.q,
+    input.data.page,
+    input.data.status,
+  );
+  return Response.json(result);
+});

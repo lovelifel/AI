@@ -6,6 +6,7 @@ import { TaskTitleSchema } from "@/lib/schemas/task";
 import { eq } from "drizzle-orm";
 import { tasks } from "@/lib/db/schema";
 import { revalidatePath } from "next/cache";
+import { getCurrentUser } from "@/lib/server/session";
 
 const UpdateTaskTitleSchema = z.object({
   id: z.uuid(),
@@ -33,6 +34,11 @@ export async function updateTaskTitle(
   let task;
 
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "请先登录" };
+    }
+
     [task] = await db
       .update(tasks)
       .set({ title: result.data.title })

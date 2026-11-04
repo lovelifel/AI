@@ -1,4 +1,12 @@
-import { pgTable, uuid, varchar, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  uuid,
+  varchar,
+  timestamp,
+  pgEnum,
+  text,
+} from "drizzle-orm/pg-core";
+import { user } from "./auth-schema";
 export const taskStatusEnum = pgEnum("task_status", ["todo", "done"]);
 export const tasks = pgTable("tasks", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -7,4 +15,7 @@ export const tasks = pgTable("tasks", {
     .defaultNow()
     .notNull(),
   status: taskStatusEnum("status").default("todo").notNull(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id),
 });
